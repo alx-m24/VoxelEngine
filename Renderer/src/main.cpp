@@ -16,8 +16,8 @@
 
 using namespace IO;
 
-constexpr unsigned int ChunkSize = 16 * 1; // Number of voxels per chunk
-constexpr float VoxelSize = 1.0f / 1.0;
+constexpr unsigned int ChunkSize = 16 * 8; // Number of voxels per chunk
+constexpr float VoxelSize = 1.0f / 8.0;
 constexpr int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 constexpr int numberOfChunksInAStraightLine = 3;
@@ -48,7 +48,7 @@ int main() {
 		return EXIT_FAILURE;
 	}
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
+	//glfwSwapInterval(1);
 
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);

@@ -9,8 +9,8 @@ uniform vec3 uDirection;
 
 #define MIN_POSITIVE_FLOAT 0.000000000001
 
-const int ChunkSize = 16 * 1; // Number of voxels per chunk
-const float VoxelSize = 1.0 / 1.0;
+const int ChunkSize = 16 * 8; // Number of voxels per chunk
+const float VoxelSize = 1.0 / 8.0;
 const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 const float maxChunk = 3.5;
@@ -71,8 +71,8 @@ void main() {
 
     //fragColor = vec4(vec3(distance(pos, uOrigin) / maxDist), 1.0);
 
-	//fragColor = vec4(getLight(normal, color.rgb, dirlight), 1.0);
-	fragColor = vec4(color.rgb, 1.0);
+	fragColor = vec4(getLight(normal, color.rgb, dirlight), 1.0);
+	//fragColor = vec4(color.rgb, 1.0);
 	//fragColor = vec4(normal.rgb, 1.0);
 }
 
@@ -117,7 +117,7 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
 	float t5 = (minChunkPos.z - origin.z) * dirfrac.z;
 	float t6 = (maxChunkPos.z - origin.z) * dirfrac.z;
 
-	float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6));
+	float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6)) - VoxelSize;
 	float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6)) + VoxelSize;
 
 	// if tmax < 0, ray (line) is intersecting AABB, but the whole AABB is behind us
@@ -132,24 +132,22 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
 		return vec4(0.0);
 	}
 
-    if (tmin - VoxelSize > minDist)
+    if (tmin > minDist)
     {
         return vec4(0.0);
     }
 
+    //vec4 color = vec4(1.0, 0.0, 0.0, 1.0);
+
     vec3 position = origin;
 
     float Min = 0.0;
-    float Max = 0.0;
-
-    tmin = 0.0f;
+    float Max = min(minDist, tmax);
 
     if (tmin > 0.0) {
         position = origin + direction * tmin;
         Min = tmin;
     }
-
-    Max = min(minDist, tmax);
 
 	vec3 currentIdx = ceil((position - chunkPos) / VoxelSize);
 	vec3 previousIdx = currentIdx;
@@ -161,6 +159,7 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
 	if (direction.x > 0.0) {
         step.x = 1;
         delta.x = VoxelSize * dirfrac.x;
+        previousIdx.x = currentIdx.x + 1;
         tMax.x = Min + (chunkPos.x + currentIdx.x * VoxelSize
                         - position.x) * dirfrac.x;
     } else if (direction.x < 0.0) {
@@ -178,6 +177,7 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
     if (direction.y > 0.0) {
         step.y = 1;
         delta.y = VoxelSize * dirfrac.y;
+        previousIdx.y = currentIdx.y + 1;
         tMax.y = Min + (chunkPos.y + currentIdx.y * VoxelSize
                         - position.y) * dirfrac.y;
     } else if (direction.y < 0.0) {
@@ -195,6 +195,7 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
     if (direction.z > 0.0) {
         step.z = 1;
         delta.z = VoxelSize * dirfrac.z;
+        previousIdx.z = currentIdx.z + 1;
         tMax.z = Min + (chunkPos.z + currentIdx.z * VoxelSize
                     - position.z) * dirfrac.z;
     } else if (direction.z < 0.0) {
@@ -218,8 +219,9 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
             if (voxel.a > 0.0) { 
                 minDist = dist;
                 normal = previousIdx - currentIdx;                    
-                pos = getPos(chunkPos, currentIdx);
+                pos = position;
                 return voxel;
+                //return mix(voxel, color, 0.5f);
             }
         }
 
@@ -229,23 +231,23 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
             // X-axis traversal.
             currentIdx.x += step.x;
             tMax.x += delta.x;
-            position.x += step.x;
 		} else if (tMax.y < tMax.z) {
             // Y-axis traversal.
 			currentIdx.y += step.y;
             tMax.y += delta.y;
-            position.y += step.y;
         } else {
             // Z-axis traversal.
             currentIdx.z += step.z;
             tMax.z += delta.z;
-            position.z += step.z;
         }
+
+        position = getPos(chunkPos, currentIdx);
 
         dist = distance(position, origin);
 	}
 
 	return vec4(0.0);
+    //return color;
 }
 
 vec3 getPos(vec3 chunkPos, vec3 currentIdx) {
