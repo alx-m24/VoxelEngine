@@ -84,7 +84,7 @@ int main() {
 	(*chunks)[7] = glm::vec4(-chunkMaxPos, 0.0f, chunkMaxPos, 0.0f);
 	(*chunks)[8] = glm::vec4(-chunkMaxPos, 0.0f, -chunkMaxPos, 0.0f);
 
-	std::array<glm::vec4, VoxelNum * chunkNum>* voxels = new std::array<glm::vec4, VoxelNum * chunkNum>;
+	std::array<glm::vec4, VoxelNum* chunkNum>* voxels = new std::array<glm::vec4, VoxelNum* chunkNum>;
 	voxels->fill(glm::vec4(0.0f));
 
 	const siv::PerlinNoise::seed_type seed = 123456u;
@@ -256,7 +256,7 @@ int main() {
 		ImGui::End();
 
 		ImGui::Begin("Camera");
-		
+
 		ImGui::DragFloat3("Position", &camera.Position[0], 0.01f);
 
 		ImGui::RadioButton("Lighting", &viewingOptions, 0);
