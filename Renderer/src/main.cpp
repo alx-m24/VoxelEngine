@@ -17,10 +17,11 @@
 using namespace IO;
 
 constexpr unsigned int ChunkSize = 16 * 8; // Number of voxels per chunk
-constexpr float VoxelSize = 1.0f / 8.0;
+constexpr float VoxelSize = 1.0f / 8.0f;
 constexpr int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
-constexpr int numberOfChunksInAStraightLine = 3;
+constexpr int renderRadius = 1;
+constexpr int numberOfChunksInAStraightLine = (2 * renderRadius + 1);
 constexpr int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
 
 static constexpr unsigned int toIdx(glm::vec3 position) {
@@ -48,7 +49,7 @@ int main() {
 		return EXIT_FAILURE;
 	}
 	glfwMakeContextCurrent(window);
-	//glfwSwapInterval(1);
+	glfwSwapInterval(1);
 
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);
@@ -145,6 +146,9 @@ int main() {
 	float diffuse = 0.8f;
 	float specular = 1.0f;
 	glm::vec3 color = glm::vec3(1.0f);
+	bool shadows = false;
+
+	int viewingOptions = 0;
 #pragma endregion
 
 #pragma region Quad
@@ -212,11 +216,14 @@ int main() {
 		shader.use();
 		camera.update(window, shader, dt);
 
+		shader.setInt("viewingOptions", viewingOptions);
+
 		shader.setVec3("dirlight.direction", glm::normalize(lightDir));
 		shader.setVec3("dirlight.ambient", glm::vec3(ambient));
 		shader.setVec3("dirlight.diffuse", glm::vec3(diffuse));
 		shader.setVec3("dirlight.specular", glm::vec3(specular));
 		shader.setVec3("dirlight.color", color);
+		shader.setBool("dirlight.shadows", shadows);
 
 		processInput(window);
 #pragma endregion
@@ -243,6 +250,7 @@ int main() {
 		ImGui::DragFloat("Ambient", &ambient, 0.01f, 0.0f, 1.0f);
 		ImGui::DragFloat("Diffuse", &diffuse, 0.01f, 0.0f, 1.0f);
 		ImGui::DragFloat("Specular", &specular, 0.01f, 0.0f, 1.0f);
+		ImGui::Checkbox("Shadows", &shadows);
 		ImGui::ColorEdit3("Color", &color[0]);
 
 		ImGui::End();
@@ -250,6 +258,11 @@ int main() {
 		ImGui::Begin("Camera");
 		
 		ImGui::DragFloat3("Position", &camera.Position[0], 0.01f);
+
+		ImGui::RadioButton("Lighting", &viewingOptions, 0);
+		ImGui::RadioButton("Colors", &viewingOptions, 1);
+		ImGui::RadioButton("Normals", &viewingOptions, 2);
+		ImGui::RadioButton("Distance", &viewingOptions, 3);
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

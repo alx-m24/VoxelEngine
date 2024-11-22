@@ -7,7 +7,7 @@ uniform vec2 uResolution;
 uniform vec3 uOrigin;
 uniform vec3 uDirection;
 
-#define MIN_POSITIVE_FLOAT 0.000000000001
+#define MIN_POSITIVE_FLOAT 0.0001
 
 const int ChunkSize = 16 * 8; // Number of voxels per chunk
 const float VoxelSize = 1.0 / 8.0;
@@ -16,7 +16,8 @@ const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 const float maxChunk = 3.5;
 const float maxDist = maxChunk * ChunkSize * VoxelSize;
 
-const int numberOfChunksInAStraightLine = 3;
+const int renderRadius = 1;
+const int numberOfChunksInAStraightLine = (2 * renderRadius + 1);
 const int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
 
 struct DirLight {
@@ -27,9 +28,12 @@ struct DirLight {
     vec3 specular;
 
     vec3 color;
+
+    bool shadows;
 };
 
 uniform DirLight dirlight;
+uniform int viewingOptions;
 
 layout(std140, binding = 0) buffer Chunks {
     vec4 chunks[chunkNum]; // vec4(posX, posY, posZ, nothing);
@@ -50,7 +54,7 @@ bool isValid(vec3 pos) {
 }
 
 vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, out vec3 pos, out vec3 normal);
-vec3 getLight(vec3 normal, vec3 color, DirLight light);
+vec3 getLight(vec3 position, vec3 normal, vec3 color, DirLight light);
 vec3 getPos(vec3 chunkPos, vec3 currentIdx);
 
 void main() {
@@ -69,19 +73,42 @@ void main() {
 
     if (color.a != 1.0) discard;
 
-    //fragColor = vec4(vec3(distance(pos, uOrigin) / maxDist), 1.0);
-
-	fragColor = vec4(getLight(normal, color.rgb, dirlight), 1.0);
-	//fragColor = vec4(color.rgb, 1.0);
-	//fragColor = vec4(normal.rgb, 1.0);
+    if (viewingOptions == 0)
+        fragColor = vec4(getLight(pos, normal, color.rgb, dirlight), 1.0);
+    else if (viewingOptions == 1)
+	    fragColor = vec4(color.rgb, 1.0);
+    else if (viewingOptions == 2)
+	    fragColor = vec4(normal.rgb, 1.0);
+    else
+        fragColor = vec4(vec3(distance(pos, uOrigin) / maxDist), 1.0);
 }
 
-vec3 getLight(vec3 normal, vec3 color, DirLight light) {    
+bool inShadow(vec3 position, vec3 lightDir) {
+    position = position + lightDir * VoxelSize;
+
+    vec3 pos, normal;
+    float minDist = maxDist;
+    for (int i = 0; i < chunkNum; ++i) {
+        vec4 newColor = rayMarch(position, lightDir, i, minDist, pos, normal);
+        if (newColor.a > 0.0) return true;
+    }
+
+    return false;
+}
+
+vec3 getLight(vec3 position, vec3 normal, vec3 color, DirLight light) {    
     light.ambient *= light.color;
     light.diffuse *= light.color;
     light.specular *= light.color;
 
     vec3 lightDir = normalize(-light.direction);
+
+    vec3 ambient = light.ambient * color;
+
+    if (light.shadows) {
+        if (inShadow(position, lightDir)) return ambient;
+    }
+
     vec3 halfwayDir = normalize(lightDir - uDirection);
 
     // diffuse shading
@@ -91,13 +118,11 @@ vec3 getLight(vec3 normal, vec3 color, DirLight light) {
     float spec = pow(max(dot(normal, halfwayDir), 0.0), 32);
 
     // combine results
-    vec3 ambient = light.ambient * color;
     vec3 diffuse = light.diffuse * diff * color;
     vec3 specular = light.specular * spec * color;
 
     return ambient + diffuse + specular;
 }
-
 
 vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, out vec3 pos, out vec3 normal) {
     if (direction.x == 0.0) direction.x = MIN_POSITIVE_FLOAT;
