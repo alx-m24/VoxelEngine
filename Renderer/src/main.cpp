@@ -16,8 +16,8 @@
 
 using namespace IO;
 
-constexpr unsigned int ChunkSize = 16 * 8; // Number of voxels per chunk
-constexpr float VoxelSize = 1.0f / 8.0f;
+constexpr unsigned int ChunkSize = 16 * 1; // Number of voxels per chunk
+constexpr float VoxelSize = 1.0f / 1.0f;
 constexpr int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 constexpr int renderRadius = 1;
@@ -271,6 +271,9 @@ int main() {
 		glfwSwapBuffers(window);
 #pragma endregion
 	}
+	glDeleteBuffers(1, &voxelSSBO);
+	glDeleteBuffers(1, &chunkSSBO);
+
 	glfwTerminate();
 
 	return EXIT_SUCCESS;

@@ -9,8 +9,8 @@ uniform vec3 uDirection;
 
 #define MIN_POSITIVE_FLOAT 0.0001
 
-const int ChunkSize = 16 * 8; // Number of voxels per chunk
-const float VoxelSize = 1.0 / 8.0;
+const int ChunkSize = 16 * 1; // Number of voxels per chunk
+const float VoxelSize = 1.0 / 1.0;
 const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 const float maxChunk = 3.5;
@@ -162,12 +162,11 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
         return vec4(0.0);
     }
 
-    //vec4 color = vec4(1.0, 0.0, 0.0, 1.0);
-
     vec3 position = origin;
 
     float Min = 0.0;
-    float Max = min(minDist, tmax);
+    //float Max = min(minDist, tmax);
+    float Max = (tmax - (2.0f * VoxelSize) < minDist) ? tmax : minDist;
 
     if (tmin > 0.0) {
         position = origin + direction * tmin;
@@ -235,9 +234,9 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
         tMax.z = 0.0;
     }
 
-    float dist = distance(position, origin);
+    float dist = Min;
 
-	while (dist <= Max) {
+	while (dist < Max) {
         if (isValid(currentIdx)) {
             uint idx = toIdx(currentIdx) + (chunkIdx * VoxelNum);
             vec4 voxel = voxels[idx];
@@ -246,7 +245,6 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
                 normal = previousIdx - currentIdx;                    
                 pos = position;
                 return voxel;
-                //return mix(voxel, color, 0.5f);
             }
         }
 
@@ -267,12 +265,10 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
         }
 
         position = getPos(chunkPos, currentIdx);
-
         dist = distance(position, origin);
 	}
 
 	return vec4(0.0);
-    //return color;
 }
 
 vec3 getPos(vec3 chunkPos, vec3 currentIdx) {
