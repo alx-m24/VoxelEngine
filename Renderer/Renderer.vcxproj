@@ -132,6 +132,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\Headers\Camera.cpp" />
+    <ClCompile Include="src\Headers\imgui\imgui.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_impl_glfw.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="src\Headers\IO\Input.cpp" />

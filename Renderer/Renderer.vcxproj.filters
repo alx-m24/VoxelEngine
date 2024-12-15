@@ -39,6 +39,9 @@
     <ClCompile Include="src\Headers\Textures\Textures.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Headers\imgui\imgui.cpp">
+      <Filter>Imgui</Filter>
+    </ClCompile>
     <ClCompile Include="src\Headers\imgui\imgui_impl_glfw.cpp">
       <Filter>Imgui</Filter>
     </ClCompile>

@@ -6,6 +6,7 @@
 #include "Headers/imgui/imgui_impl_glfw.h"
 #include "Headers/imgui/imgui_impl_opengl3.h"
 // Other
+#include <map>
 #include <array>
 #include <iostream>
 // My headers
@@ -59,6 +60,20 @@ int main() {
 		std::cerr << "Failed to initialize GLAD" << std::endl;
 		return -1;
 	}
+
+#pragma endregion
+
+#pragma region GUI
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGuiIO& io = ImGui::GetIO(); (void)io;
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+	ImGui::StyleColorsDark();
+
+	ImGui_ImplGlfw_InitForOpenGL(window, true);
+	ImGui_ImplOpenGL3_Init("#version 130");
 #pragma endregion
 
 #pragma region Shader
@@ -120,6 +135,9 @@ int main() {
 		}
 	}
 
+	// DEBUG
+	(*voxels)[toIdx(glm::vec4(15.0f))] = glm::vec4(1.0f, 1.0f, 1.0f, 0.5f);
+
 	// Number of bytes following the std140 layout rule
 	// N = 4 bytes
 	// vec4 = 4N
@@ -146,7 +164,7 @@ int main() {
 	float diffuse = 0.8f;
 	float specular = 1.0f;
 	glm::vec3 color = glm::vec3(1.0f);
-	bool shadows = false;
+	bool shadows = true;
 
 	int viewingOptions = 0;
 #pragma endregion
@@ -183,19 +201,6 @@ int main() {
 	glBindVertexArray(0);
 #pragma endregion
 
-#pragma region GUI
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGuiIO& io = ImGui::GetIO(); (void)io;
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-
-	ImGui::StyleColorsDark();
-
-	ImGui_ImplGlfw_InitForOpenGL(window, true);
-	ImGui_ImplOpenGL3_Init("#version 420");
-#pragma endregion
-
 #pragma region Time Variables
 	float myTime = 0.0f;
 	float lastTime = 0.0f;
@@ -210,6 +215,10 @@ int main() {
 
 #pragma region Update
 		glfwPollEvents();
+
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
 
 		shader.use();
 
@@ -238,31 +247,34 @@ int main() {
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
 #pragma region GUI
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
-		ImGui::NewFrame();
 
 		ImGui::ShowMetricsWindow();
 
-		ImGui::Begin("Light");
+		{
+			ImGui::Begin("Light");
 
-		ImGui::DragFloat3("Direction", &lightDir[0], 0.01f, -1.0f, 1.0f);
-		ImGui::DragFloat("Ambient", &ambient, 0.01f, 0.0f, 1.0f);
-		ImGui::DragFloat("Diffuse", &diffuse, 0.01f, 0.0f, 1.0f);
-		ImGui::DragFloat("Specular", &specular, 0.01f, 0.0f, 1.0f);
-		ImGui::Checkbox("Shadows", &shadows);
-		ImGui::ColorEdit3("Color", &color[0]);
+			ImGui::DragFloat3("Direction", &lightDir[0], 0.01f, -1.0f, 1.0f);
+			ImGui::DragFloat("Ambient", &ambient, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Diffuse", &diffuse, 0.01f, 0.0f, 1.0f);
+			ImGui::DragFloat("Specular", &specular, 0.01f, 0.0f, 1.0f);
+			ImGui::Checkbox("Shadows", &shadows);
+			ImGui::ColorEdit3("Color", &color[0]);
 
-		ImGui::End();
+			ImGui::End();
+		}
+		{
+			ImGui::Begin("Camera");
 
-		ImGui::Begin("Camera");
+			ImGui::DragFloat3("Position", &camera.Position[0], 0.01f);
 
-		ImGui::DragFloat3("Position", &camera.Position[0], 0.01f);
+			ImGui::RadioButton("Lighting", &viewingOptions, 0);
+			ImGui::RadioButton("Colors", &viewingOptions, 1);
+			ImGui::RadioButton("Normals", &viewingOptions, 2);
+			ImGui::RadioButton("Distance", &viewingOptions, 3);
 
-		ImGui::RadioButton("Lighting", &viewingOptions, 0);
-		ImGui::RadioButton("Colors", &viewingOptions, 1);
-		ImGui::RadioButton("Normals", &viewingOptions, 2);
-		ImGui::RadioButton("Distance", &viewingOptions, 3);
+			ImGui::End();
+		}
+		
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -274,6 +286,11 @@ int main() {
 	glDeleteBuffers(1, &voxelSSBO);
 	glDeleteBuffers(1, &chunkSSBO);
 
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
+
+	glfwDestroyWindow(window);
 	glfwTerminate();
 
 	return EXIT_SUCCESS;

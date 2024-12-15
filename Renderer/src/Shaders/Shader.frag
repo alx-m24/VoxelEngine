@@ -165,8 +165,8 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
     vec3 position = origin;
 
     float Min = 0.0;
-    //float Max = min(minDist, tmax);
-    float Max = (tmax - (2.0f * VoxelSize) < minDist) ? tmax : minDist;
+    float Max = min(minDist, tmax);
+    //float Max = (tmax - (2.0f * VoxelSize) < minDist) ? tmax : minDist;
 
     if (tmin > 0.0) {
         position = origin + direction * tmin;
