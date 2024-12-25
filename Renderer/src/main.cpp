@@ -6,7 +6,6 @@
 #include "Headers/imgui/imgui_impl_glfw.h"
 #include "Headers/imgui/imgui_impl_opengl3.h"
 // Other
-#include <map>
 #include <array>
 #include <iostream>
 // My headers
@@ -136,7 +135,8 @@ int main() {
 	}
 
 	// DEBUG
-	(*voxels)[toIdx(glm::vec4(15.0f))] = glm::vec4(1.0f, 1.0f, 1.0f, 0.5f);
+	(*voxels)[toIdx(glm::vec3(0.0f, 15.0f, 0.0f)) + 6 * VoxelNum] = glm::vec4(0.0f, 0.0f, 1.0f, 0.8f);
+	(*voxels)[toIdx(glm::vec3(14.0f, 15.0f, 15.0f))] = glm::vec4(1.0f, 0.0f, 0.0f, 0.8f);
 
 	// Number of bytes following the std140 layout rule
 	// N = 4 bytes
@@ -219,6 +219,13 @@ int main() {
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
+
+		glm::vec3 idx = glm::vec3(14.0f, 15.0f, 15.0f);
+		unsigned int index = toIdx(idx);
+		float alpha = ((sin(myTime) + 1.0f) / 2.0f);
+		(*voxels)[index] = glm::vec4(1.0f, 0.0f, 0.0f, alpha);
+		glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
+		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 16 * index, 16, &(*voxels)[index]);
 
 		shader.use();
 

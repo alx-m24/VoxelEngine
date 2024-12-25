@@ -66,15 +66,28 @@ void main() {
     vec4 color;
     vec3 pos, normal;
     float minDist = maxDist;
+    float lastminDist = minDist;
+    float transparentDist = minDist;
+    
     for (int i = 0; i < chunkNum; ++i) {
         vec4 newColor = rayMarch(uOrigin, rayDirection, i, minDist, pos, normal);
-        if (newColor.a == 1.0) color = newColor;
+        if (newColor.a == 1.0) {
+            if (minDist < transparentDist) color = newColor;
+            else color = vec4(mix(newColor.rgb, color.rgb, color.a), 1.0);
+        }
+        else if (newColor.a > 0.0) {
+            color = vec4(mix(getLight(pos, normal, color.rgb, dirlight), newColor.rgb, newColor.a), min(newColor.a + color.a, 1.0));
+            transparentDist = minDist;
+            minDist = lastminDist;          
+        }
+        lastminDist =  minDist;
     }
 
-    if (color.a != 1.0) discard;
+    if (color.a == 0.0) discard;
 
     if (viewingOptions == 0)
-        fragColor = vec4(getLight(pos, normal, color.rgb, dirlight), 1.0);
+        if (color.a == 1.0) fragColor = vec4(getLight(pos, normal, color.rgb, dirlight), 1.0);
+        else fragColor = vec4(color.rgb, 1.0);
     else if (viewingOptions == 1)
 	    fragColor = vec4(color.rgb, 1.0);
     else if (viewingOptions == 2)
@@ -106,7 +119,7 @@ vec3 getLight(vec3 position, vec3 normal, vec3 color, DirLight light) {
     vec3 ambient = light.ambient * color;
 
     if (light.shadows) {
-        if (inShadow(position, lightDir)) return ambient;
+        //if (inShadow(position, lightDir)) return ambient;
     }
 
     vec3 halfwayDir = normalize(lightDir - uDirection);
@@ -236,15 +249,23 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
 
     float dist = Min;
 
+    vec4 color = vec4(0.0);
+
 	while (dist < Max) {
         if (isValid(currentIdx)) {
             uint idx = toIdx(currentIdx) + (chunkIdx * VoxelNum);
             vec4 voxel = voxels[idx];
-            if (voxel.a > 0.0) { 
+            if (voxel.a == 1.0) { 
                 minDist = dist;
                 normal = previousIdx - currentIdx;                    
                 pos = position;
-                return voxel;
+                return vec4(mix(voxel.rgb, color.rgb, color.a), voxel.a);
+            } 
+            else if (voxel.a > 0.0) {
+                if (viewingOptions != 0) return voxel;
+
+                color = vec4(mix(getLight(position, previousIdx - currentIdx, voxel.rgb, dirlight), color.rgb, color.a), min(voxel.a + color.a, 1.0));
+                minDist = dist;
             }
         }
 
@@ -268,7 +289,7 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
         dist = distance(position, origin);
 	}
 
-	return vec4(0.0);
+    return vec4(mix(vec3(0.0), color.rgb, color.a), color.a);
 }
 
 vec3 getPos(vec3 chunkPos, vec3 currentIdx) {
