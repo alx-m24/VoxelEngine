@@ -71,7 +71,7 @@ int main() {
 	std::array<glm::vec4, VoxelNum* chunkNum>* voxels = new std::array<glm::vec4, VoxelNum* chunkNum>;
 
 	Terrain terrain;
-	terrain.generate(voxels, chunks, 7439682u);
+	terrain.generate(voxels, chunks, 987654132);
 
 	// Number of bytes following the std140 layout rule
 	// N = 4 bytes
@@ -238,3 +238,5 @@ int main() {
 }
 
 // TODO: Add 3D-rasterized models to voxels convertion
+// TODO: Add colored shadows
+// TODO: Add point lights
