@@ -34,9 +34,7 @@ void Terrain::generate(std::array<glm::vec4, VoxelNum* chunkNum>* voxels, std::a
 
 					glm::vec3 index = toGridPos(position - chunkPos);
 
-					glm::vec4 color = noise > 0.5f ?
-						getColor(glm::vec3(i, j, k))
-						: glm::vec4(0.0f);
+					glm::vec4 color = (noise > 0.5f) ? getColor(glm::vec3(i, j, k)) : glm::vec4(0.0f);
 
 					(*voxels)[toIdx(index) + chunkIdx * VoxelNum] = color;
 				}

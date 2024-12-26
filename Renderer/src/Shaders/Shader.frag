@@ -73,7 +73,7 @@ void main() {
     
     for (int i = 0; i < chunkNum; ++i) {
         vec4 newColor = rayMarch(uOrigin, rayDirection, i, minDist, pos, normal);
-        if (newColor.a >= 1.0) {
+        if (newColor.a == 1.0) {
             if (minDist < transparentDist) color = newColor;
             else color = vec4(mix(newColor.rgb, color.rgb, color.a), 1.0);
         }
@@ -393,7 +393,7 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
         if (isValid(currentIdx)) {
             uint idx = toIdx(currentIdx) + (chunkIdx * VoxelNum);
             vec4 voxel = voxels[idx];
-            if (voxel.a >= 1.0) { 
+            if (voxel.a == 1.0) { 
                 minDist = dist;
                 normal = previousIdx - currentIdx;                    
                 pos = position;
@@ -402,8 +402,14 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
             else if (voxel.a > 0.0) {
                 if (viewingOptions != 0) return voxel;
 
-                color = vec4(mix(getLight(position, previousIdx - currentIdx, voxel.rgb, dirlight), color.rgb, color.a), min(voxel.a + color.a, 1.0));
+                color = vec4(mix(getLight(position, previousIdx - currentIdx, voxel.rgb, dirlight), color.rgb, color.a), voxel.a + color.a);
                 minDist = dist;
+
+                if (color.a >= 1.0) {
+                    normal = previousIdx - currentIdx;                    
+                    pos = position;
+                    return vec4(color.rgb, 1.0);
+                }
             }
         }
 
