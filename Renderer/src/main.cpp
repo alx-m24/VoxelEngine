@@ -7,32 +7,16 @@
 #include "Headers/imgui/imgui_impl_opengl3.h"
 // Other
 #include <array>
+#include <thread>
 #include <iostream>
 // My headers
 #include "Headers/PerlinNoise/PerlinNoise.hpp"
 #include "Headers/Shaders/Shader.hpp"
 #include "Headers/IO/Input.hpp"
 #include "Headers/Camera.hpp"
+#include "Headers/Terrain.hpp"
 
 using namespace IO;
-
-constexpr unsigned int ChunkSize = 16 * 1; // Number of voxels per chunk
-constexpr float VoxelSize = 1.0f / 1.0f;
-constexpr int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
-
-constexpr int renderRadius = 1;
-constexpr int numberOfChunksInAStraightLine = (2 * renderRadius + 1);
-constexpr int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
-
-static constexpr unsigned int toIdx(glm::vec3 position) {
-	return static_cast<int>(position.x) + static_cast<int>(position.y) * ChunkSize + static_cast<int>(position.z) * ChunkSize * ChunkSize;
-}
-static constexpr glm::vec3 toGridPos(glm::vec3 position) {
-	return position / VoxelSize;
-}
-static bool isValid(glm::vec3 pos) {
-	return (pos.x >= 0 && pos.y >= 0 && pos.z >= 0) && (pos.x < ChunkSize && pos.y < ChunkSize && pos.z < ChunkSize);
-}
 
 int main() {
 #pragma region init
@@ -84,59 +68,10 @@ int main() {
 
 #pragma region Objects
 	std::array<glm::vec4, chunkNum >* chunks = new std::array<glm::vec4, chunkNum>;
-	chunks->fill(glm::vec4(0.0f));
-
-	float chunkMaxPos = ChunkSize * VoxelSize;
-
-	(*chunks)[0] = glm::vec4(0.0f);
-	(*chunks)[1] = glm::vec4(chunkMaxPos, 0.0f, 0.0f, 0.0f);
-	(*chunks)[2] = glm::vec4(-chunkMaxPos, 0.0f, 0.0f, 0.0f);
-	(*chunks)[3] = glm::vec4(0.0f, 0.0f, chunkMaxPos, 0.0f);
-	(*chunks)[4] = glm::vec4(0.0f, 0.0f, -chunkMaxPos, 0.0f);
-	(*chunks)[5] = glm::vec4(chunkMaxPos, 0.0f, -chunkMaxPos, 0.0f);
-	(*chunks)[6] = glm::vec4(chunkMaxPos, 0.0f, chunkMaxPos, 0.0f);
-	(*chunks)[7] = glm::vec4(-chunkMaxPos, 0.0f, chunkMaxPos, 0.0f);
-	(*chunks)[8] = glm::vec4(-chunkMaxPos, 0.0f, -chunkMaxPos, 0.0f);
-
 	std::array<glm::vec4, VoxelNum* chunkNum>* voxels = new std::array<glm::vec4, VoxelNum* chunkNum>;
-	voxels->fill(glm::vec4(0.0f));
 
-	const siv::PerlinNoise::seed_type seed = 123456u;
-	const siv::PerlinNoise perlin{ seed };
-	const float denominator = 0.5f * (ChunkSize * VoxelSize);
-
-	srand(time(0));
-	for (int chunkIdx = 0; chunkIdx < chunkNum; ++chunkIdx) {
-		glm::vec3 chunkPos = glm::vec3((*chunks)[chunkIdx]);
-
-		for (int i = 0; i < ChunkSize; ++i) {
-			for (int j = 0; j < ChunkSize; ++j) {
-				for (int k = 0; k < ChunkSize; ++k) {
-					glm::vec3 position = (glm::vec3(i, j, k) * VoxelSize) + (VoxelSize / 2.0f) + chunkPos;
-
-					const double noise = perlin.noise3D_01(position.x / denominator, position.y / denominator, position.z / denominator);
-
-					glm::vec3 index = toGridPos(position - chunkPos);
-
-					glm::vec4 color = noise > 0.5f ?
-						glm::vec4(
-							(float)(rand() % 255) / 255.0f,
-							(float)(rand() % 255) / 255.0f,
-							(float)(rand() % 255) / 255.0f,
-							1.0f)
-						: glm::vec4(0.0f);
-
-					//color = glm::vec4(noise, noise, noise, 1.0f);
-
-					(*voxels)[toIdx(index) + chunkIdx * VoxelNum] = color;
-				}
-			}
-		}
-	}
-
-	// DEBUG
-	(*voxels)[toIdx(glm::vec3(0.0f, 15.0f, 0.0f)) + 6 * VoxelNum] = glm::vec4(0.0f, 0.0f, 1.0f, 0.8f);
-	(*voxels)[toIdx(glm::vec3(14.0f, 15.0f, 15.0f))] = glm::vec4(1.0f, 0.0f, 0.0f, 0.8f);
+	Terrain terrain;
+	terrain.generate(voxels, chunks, 7439682u);
 
 	// Number of bytes following the std140 layout rule
 	// N = 4 bytes
@@ -162,7 +97,7 @@ int main() {
 	glm::vec3 lightDir = { 0.0, -1.0, 0.0 };
 	float ambient = 0.2f;
 	float diffuse = 0.8f;
-	float specular = 1.0f;
+	float specular = 0.05f;
 	glm::vec3 color = glm::vec3(1.0f);
 	bool shadows = true;
 
@@ -219,13 +154,6 @@ int main() {
 		ImGui_ImplOpenGL3_NewFrame();
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
-
-		glm::vec3 idx = glm::vec3(14.0f, 15.0f, 15.0f);
-		unsigned int index = toIdx(idx);
-		float alpha = ((sin(myTime) + 1.0f) / 2.0f);
-		(*voxels)[index] = glm::vec4(1.0f, 0.0f, 0.0f, alpha);
-		glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
-		glBufferSubData(GL_SHADER_STORAGE_BUFFER, 16 * index, 16, &(*voxels)[index]);
 
 		shader.use();
 

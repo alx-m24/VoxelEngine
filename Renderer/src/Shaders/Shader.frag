@@ -9,8 +9,8 @@ uniform vec3 uDirection;
 
 #define MIN_POSITIVE_FLOAT 0.0001
 
-const int ChunkSize = 16 * 1; // Number of voxels per chunk
-const float VoxelSize = 1.0 / 1.0;
+const int ChunkSize = 16 * 4; // Number of voxels per chunk
+const float VoxelSize = 1.0 / 4.0;
 const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 const float maxChunk = 3.5;
@@ -34,13 +34,14 @@ struct DirLight {
 
 uniform DirLight dirlight;
 uniform int viewingOptions;
+uniform float reflection;
 
 layout(std140, binding = 0) buffer Chunks {
     vec4 chunks[chunkNum]; // vec4(posX, posY, posZ, nothing);
 };
 
 layout(std140, binding = 1) buffer Voxels {
-    vec4 voxels[VoxelNum * chunkNum];
+    vec4 voxels[VoxelNum * chunkNum]; // vec4(r, g, b, alpha + reflection) 
 };
 
 uint toIdx(vec3 position) {
@@ -271,7 +272,7 @@ vec3 getLight(vec3 position, vec3 normal, vec3 color, DirLight light) {
     float diff = max(dot(normal, lightDir), 0.0);
 
     // TODO: change reflection value
-    float spec = pow(max(dot(normal, halfwayDir), 0.0), 32);
+    float spec = pow(max(dot(normal, halfwayDir), 0.0), 30.0);
 
     // combine results
     vec3 diffuse = light.diffuse * diff * color;

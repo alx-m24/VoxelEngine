@@ -143,6 +143,7 @@
     <ClCompile Include="src\Headers\Mesh.cpp" />
     <ClCompile Include="src\Headers\Model.cpp" />
     <ClCompile Include="src\Headers\Shaders\Shader.cpp" />
+    <ClCompile Include="src\Headers\Terrain.cpp" />
     <ClCompile Include="src\Headers\Textures\Textures.cpp" />
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
@@ -166,6 +167,7 @@
     <ClInclude Include="src\Headers\Model.hpp" />
     <ClInclude Include="src\Headers\PerlinNoise\PerlinNoise.hpp" />
     <ClInclude Include="src\Headers\Shaders\Shader.hpp" />
+    <ClInclude Include="src\Headers\Terrain.hpp" />
     <ClInclude Include="src\Headers\Textures\Textures.hpp" />
     <ClInclude Include="src\Headers\Vertex\Vertex.hpp" />
   </ItemGroup>

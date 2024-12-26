@@ -60,6 +60,9 @@
     <ClCompile Include="src\Headers\imgui\imgui_widgets.cpp">
       <Filter>Imgui</Filter>
     </ClCompile>
+    <ClCompile Include="src\Headers\Terrain.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="src\Shaders\Shader.frag">
@@ -120,6 +123,9 @@
     </ClInclude>
     <ClInclude Include="src\Headers\imgui\imstb_truetype.h">
       <Filter>Imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Headers\Terrain.hpp">
+      <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
