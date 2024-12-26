@@ -53,5 +53,7 @@ glm::vec4 Terrain::getColor(glm::vec3 idx) {
 
 	if (random * 10.0f < 0.01f) return glm::vec4(glm::vec3(0.701f), 1.0f);
 
-	return glm::vec4(0.545f + random, 0.270f + random, 0.0745f + random, 1.0f);
+	if (idx.y >= ChunkSize - 8) return glm::vec4(0.545f + random, 0.270f + random, 0.0745f + random, 1.0f);
+
+	return glm::vec4(glm::vec3(0.450f + random), 1.0f);
 }

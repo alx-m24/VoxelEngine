@@ -236,3 +236,5 @@ int main() {
 	return EXIT_SUCCESS;
 #pragma endregion
 }
+
+// TODO: Add 3D-rasterized models to voxels convertion
