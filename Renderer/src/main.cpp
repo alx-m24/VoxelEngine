@@ -141,6 +141,8 @@ int main() {
 	float lastTime = 0.0f;
 	float dt = 0.0f;
 #pragma endregion
+
+#pragma region Main Loop
 	while (!glfwWindowShouldClose(window)) {
 #pragma region Time
 		myTime = static_cast<float>(glfwGetTime());
@@ -218,6 +220,9 @@ int main() {
 		glfwSwapBuffers(window);
 #pragma endregion
 	}
+#pragma endregion
+
+#pragma region Terminate
 	glDeleteBuffers(1, &voxelSSBO);
 	glDeleteBuffers(1, &chunkSSBO);
 
@@ -229,4 +234,5 @@ int main() {
 	glfwTerminate();
 
 	return EXIT_SUCCESS;
+#pragma endregion
 }
