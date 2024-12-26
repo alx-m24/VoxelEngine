@@ -133,8 +133,12 @@
   <ItemGroup>
     <ClCompile Include="src\Headers\Camera.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui.cpp" />
+    <ClCompile Include="src\Headers\imgui\imgui_demo.cpp" />
+    <ClCompile Include="src\Headers\imgui\imgui_draw.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_impl_glfw.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_impl_opengl3.cpp" />
+    <ClCompile Include="src\Headers\imgui\imgui_tables.cpp" />
+    <ClCompile Include="src\Headers\imgui\imgui_widgets.cpp" />
     <ClCompile Include="src\Headers\IO\Input.cpp" />
     <ClCompile Include="src\Headers\Mesh.cpp" />
     <ClCompile Include="src\Headers\Model.cpp" />
@@ -148,10 +152,15 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Headers\Camera.hpp" />
+    <ClInclude Include="src\Headers\imgui\imconfig.h" />
     <ClInclude Include="src\Headers\imgui\imgui.h" />
     <ClInclude Include="src\Headers\imgui\imgui_impl_glfw.h" />
     <ClInclude Include="src\Headers\imgui\imgui_impl_opengl3.h" />
     <ClInclude Include="src\Headers\imgui\imgui_impl_opengl3_loader.h" />
+    <ClInclude Include="src\Headers\imgui\imgui_internal.h" />
+    <ClInclude Include="src\Headers\imgui\imstb_rectpack.h" />
+    <ClInclude Include="src\Headers\imgui\imstb_textedit.h" />
+    <ClInclude Include="src\Headers\imgui\imstb_truetype.h" />
     <ClInclude Include="src\Headers\IO\Input.hpp" />
     <ClInclude Include="src\Headers\Mesh.hpp" />
     <ClInclude Include="src\Headers\Model.hpp" />
