@@ -7,8 +7,8 @@
 #include <glad/glad.h>
 #include <iostream>
 
-constexpr unsigned int ChunkSize = 16 * 4; // Number of voxels per chunk
-constexpr float VoxelSize = 1.0f / 4.0f;
+constexpr unsigned int ChunkSize = 16 * 1; // Number of voxels per chunk
+constexpr float VoxelSize = 1.0f / 1.0f;
 constexpr int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 constexpr int renderRadius = 1;
@@ -28,10 +28,15 @@ static bool isValid(glm::vec3 pos) {
 class Terrain
 {
 public:
-	Terrain() {};
+	Terrain(unsigned int seed, unsigned int voxelSSBO);
 
-	void generate(unsigned int voxelSSBO, std::array<glm::vec4, chunkNum>* chunks, unsigned int Seed);
+	void generate(std::array<glm::vec4, chunkNum>* chunks);
 	glm::vec4 getColor(glm::vec3 idx);
+
+private:
+	siv::PerlinNoise::seed_type Seed;
+	siv::PerlinNoise perlin;
+	unsigned int voxelSSBO;
 };
 
 #endif // !TERRAIN_H

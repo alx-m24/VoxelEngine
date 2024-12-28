@@ -63,6 +63,9 @@
     <ClCompile Include="src\Headers\Terrain.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Headers\ChunkSystem.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="src\Shaders\Shader.frag">
@@ -131,6 +134,9 @@
       <Filter>Imgui</Filter>
     </ClInclude>
     <ClInclude Include="src\Headers\Terrain.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Headers\ChunkSystem.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

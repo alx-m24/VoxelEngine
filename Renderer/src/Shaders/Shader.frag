@@ -10,8 +10,8 @@ uniform vec3 uDirection;
 
 #define MIN_POSITIVE_FLOAT 0.0001
 
-const int ChunkSize = 16 * 4; // Number of voxels per chunk
-const float VoxelSize = 1.0 / 4.0;
+const int ChunkSize = 16 * 1; // Number of voxels per chunk
+const float VoxelSize = 1.0 / 1.0;
 const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 uniform float maxDist;

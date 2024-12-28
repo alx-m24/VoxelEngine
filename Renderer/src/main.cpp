@@ -12,6 +12,7 @@
 // My headers
 #include "Headers/PerlinNoise/PerlinNoise.hpp"
 #include "Headers/Shaders/Shader.hpp"
+#include "Headers/ChunkSystem.hpp"
 #include "Headers/IO/Input.hpp"
 #include "Headers/Camera.hpp"
 #include "Headers/Terrain.hpp"
@@ -78,7 +79,11 @@ int main() {
 #pragma endregion
 
 #pragma region Objects
-	std::array<glm::vec4, chunkNum >* chunks = new std::array<glm::vec4, chunkNum>;
+	Camera camera(window, voxelShader);
+
+	camera.Position = glm::vec3(16.0f);
+
+	std::array<glm::vec4, chunkNum>* chunks = new std::array<glm::vec4, chunkNum>;
 
 	// Number of bytes following the std140 layout rule
 	// N = 4 bytes
@@ -90,18 +95,13 @@ int main() {
 	glBufferData(GL_SHADER_STORAGE_BUFFER, VoxelNum * chunkNum * 16, nullptr, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, voxelSSBO);
 
-	Terrain terrain;
-	terrain.generate(voxelSSBO, chunks, 1587343);
-
 	unsigned int chunkSSBO;
 	glGenBuffers(1, &chunkSSBO);
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, chunkSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, chunks->size() * 16, chunks->data(), GL_DYNAMIC_DRAW);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, chunks->size() * 16, nullptr, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, chunkSSBO);
 
-	Camera camera(window, voxelShader);
-
-	camera.Position = glm::vec3(16.0f);
+	ChunkSystem chunkSys(camera, chunks, voxelSSBO, chunkSSBO, 1587343);
 
 	glm::vec3 lightDir = { 0.0, -1.0, 0.0 };
 	float ambient = 0.2f;
@@ -167,6 +167,8 @@ int main() {
 		ImGui::NewFrame();
 
 		camera.update(window, voxelShader, dt);
+
+		chunkSys.update();
 
 #pragma region Rasterized
 		rasterized.use();

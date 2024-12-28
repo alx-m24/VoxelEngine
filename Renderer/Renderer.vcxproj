@@ -132,6 +132,7 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\Headers\Camera.cpp" />
+    <ClCompile Include="src\Headers\ChunkSystem.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_demo.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_draw.cpp" />
@@ -155,6 +156,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Headers\Camera.hpp" />
+    <ClInclude Include="src\Headers\ChunkSystem.hpp" />
     <ClInclude Include="src\Headers\imgui\imconfig.h" />
     <ClInclude Include="src\Headers\imgui\imgui.h" />
     <ClInclude Include="src\Headers\imgui\imgui_impl_glfw.h" />

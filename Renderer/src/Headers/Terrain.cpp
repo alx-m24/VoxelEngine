@@ -1,26 +1,19 @@
 #include "Terrain.hpp"
 
-void Terrain::generate(unsigned int voxelSSBO, std::array<glm::vec4, chunkNum>* chunks, unsigned int Seed)
+Terrain::Terrain(unsigned int seed, unsigned int voxelSSBO) : voxelSSBO(voxelSSBO)
 {
-	chunks->fill(glm::vec4(0.0f));
+	Seed = siv::PerlinNoise::seed_type(seed);
+	perlin = siv::PerlinNoise(Seed);
 
-	float chunkMaxPos = ChunkSize * VoxelSize;
+	srand(seed);
+}
 
-	(*chunks)[0] = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
-	(*chunks)[1] = glm::vec4(chunkMaxPos, 0.0f, 0.0f, 0.0f);
-	(*chunks)[2] = glm::vec4(-chunkMaxPos, 0.0f, 0.0f, 0.0f);
-	(*chunks)[3] = glm::vec4(0.0f, 0.0f, chunkMaxPos, 0.0f);
-	(*chunks)[4] = glm::vec4(0.0f, 0.0f, -chunkMaxPos, 0.0f);
-	(*chunks)[5] = glm::vec4(chunkMaxPos, 0.0f, -chunkMaxPos, 0.0f);
-	(*chunks)[6] = glm::vec4(chunkMaxPos, 0.0f, chunkMaxPos, 0.0f);
-	(*chunks)[7] = glm::vec4(-chunkMaxPos, 0.0f, chunkMaxPos, 0.0f);
-	(*chunks)[8] = glm::vec4(-chunkMaxPos, 0.0f, -chunkMaxPos, 0.0f);
+// TODO: Add threading here
 
-	const siv::PerlinNoise::seed_type seed = Seed;
-	const siv::PerlinNoise perlin{ seed };
+void Terrain::generate(std::array<glm::vec4, chunkNum>* chunks)
+{
 	const float denominator = 0.5f * (ChunkSize * VoxelSize);
 
-	srand(time(0));
 	for (int chunkIdx = 0; chunkIdx < chunkNum; ++chunkIdx) {
 		glm::vec3 chunkPos = glm::vec3((*chunks)[chunkIdx]);
 
@@ -43,8 +36,6 @@ void Terrain::generate(unsigned int voxelSSBO, std::array<glm::vec4, chunkNum>* 
 		}
 	}
 }
-
-// TODO: add chunk loading and unloading
 
 glm::vec4 Terrain::getColor(glm::vec3 idx) {
 	float random = (float)(rand()) / RAND_MAX;
