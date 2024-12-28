@@ -24,9 +24,12 @@ public:
     glm::vec3 right = { 0.0f, 0.0f, 1.0f };
     float Yaw = 87.0f;
     float Pitch = -4.0f;
-    float FOV = 15.0f;
+    float FOV = 45.0f;
     float mouseSens = 0.08f;
-    const float MovementSpeed = 8.0f;
+    float far = 100.0f;
+    const float MovementSpeed = 8.0f; 
+    glm::mat4 viewMatrix;
+    glm::mat4 projectionMatrix;
 
 public:
     Camera(GLFWwindow* window, Shader& shader);

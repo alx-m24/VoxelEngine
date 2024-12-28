@@ -33,12 +33,15 @@ void Camera::update(GLFWwindow* window, Shader& shader, float dt)
             this->move(Camera::RIGHT, dt);
     }
 
-    glm::mat3 viewMatrix = glm::lookAt(Position, Position + front, WorldUp);
+    viewMatrix = glm::lookAt(Position, Position + front, WorldUp);
+    projectionMatrix = glm::perspective(glm::radians(FOV), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, far);
 
     shader.setVec2("uResolution", SCR_WIDTH, SCR_HEIGHT);
     shader.setMat3("uViewMatrix", viewMatrix);
     shader.setVec3("uOrigin", Position);
     shader.setVec3("uDirection", front);
+    shader.setFloat("maxDist", far);
+    shader.setFloat("fov", glm::radians(FOV));
 }
 
 void Camera::move(Movement movement, float dt)

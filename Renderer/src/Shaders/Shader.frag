@@ -2,6 +2,7 @@
 
 out vec4 fragColor;
 
+uniform float fov;
 uniform mat3 uViewMatrix;
 uniform vec2 uResolution;
 uniform vec3 uOrigin;
@@ -13,8 +14,7 @@ const int ChunkSize = 16 * 4; // Number of voxels per chunk
 const float VoxelSize = 1.0 / 4.0;
 const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
-const float maxChunk = 3.5;
-const float maxDist = maxChunk * ChunkSize * VoxelSize;
+uniform float maxDist;
 
 const int renderRadius = 1;
 const int numberOfChunksInAStraightLine = (2 * renderRadius + 1);
@@ -56,13 +56,13 @@ bool isValid(vec3 pos) {
 
 vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, out vec3 pos, out vec3 normal);
 vec4 shadowRayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, out vec3 pos, out vec3 normal);
-vec3 getLight(vec3 position, vec3 normal, vec3 color, DirLight light);
+vec3 getLight(vec3 position, vec3 rayDir, vec3 normal, vec3 color, DirLight light);
 vec3 getPos(vec3 chunkPos, vec3 currentIdx);
 
 void main() {
 	vec2 aspectRatio = vec2(uResolution.x / uResolution.y, 1.0);
 	vec2 uv = 2.0 * gl_FragCoord.xy / uResolution - 1.0;
-	uv *= aspectRatio;
+	uv *= aspectRatio * fov;
 	vec3 rayDirection = normalize(vec3(uv, -1.0) * uViewMatrix);
 
     vec4 color;
@@ -78,7 +78,7 @@ void main() {
             else color = vec4(mix(newColor.rgb, color.rgb, color.a), 1.0);
         }
         else if (newColor.a > 0.0) {
-            color = vec4(mix(getLight(pos, normal, color.rgb, dirlight), newColor.rgb, newColor.a), min(newColor.a + color.a, 1.0));
+            color = vec4(mix(getLight(pos, rayDirection, normal, color.rgb, dirlight), newColor.rgb, newColor.a), min(newColor.a + color.a, 1.0));
             transparentDist = minDist;
             minDist = lastminDist;          
         }
@@ -88,7 +88,7 @@ void main() {
     if (color.a == 0.0) discard;
 
     if (viewingOptions == 0)
-        if (color.a == 1.0) fragColor = vec4(getLight(pos, normal, color.rgb, dirlight), 1.0);
+        if (color.a == 1.0) fragColor = vec4(getLight(pos, rayDirection, normal, color.rgb, dirlight), 1.0);
         else fragColor = vec4(color.rgb, 1.0);
     else if (viewingOptions == 1)
 	    fragColor = vec4(color.rgb, 1.0);
@@ -253,7 +253,7 @@ vec4 shadowRayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDi
     return vec4(0.0);
 }
 
-vec3 getLight(vec3 position, vec3 normal, vec3 color, DirLight light) {    
+vec3 getLight(vec3 position, vec3 rayDir, vec3 normal, vec3 color, DirLight light) {    
     light.ambient *= light.color;
     light.diffuse *= light.color;
     light.specular *= light.color;
@@ -266,13 +266,13 @@ vec3 getLight(vec3 position, vec3 normal, vec3 color, DirLight light) {
         if (inShadow(position, lightDir)) return ambient;
     }
 
-    vec3 halfwayDir = normalize(lightDir - uDirection);
+    vec3 halfwayDir = normalize(lightDir - rayDir);
 
     // diffuse shading
     float diff = max(dot(normal, lightDir), 0.0);
 
     // TODO: change reflection value
-    float spec = pow(max(dot(normal, halfwayDir), 0.0), 30.0);
+    float spec = pow(max(dot(normal, halfwayDir), 0.0), 100.0);
 
     // combine results
     vec3 diffuse = light.diffuse * diff * color;
@@ -402,7 +402,7 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
             else if (voxel.a > 0.0) {
                 if (viewingOptions != 0) return voxel;
 
-                color = vec4(mix(getLight(position, previousIdx - currentIdx, voxel.rgb, dirlight), color.rgb, color.a), voxel.a + color.a);
+                color = vec4(mix(getLight(position, direction, previousIdx - currentIdx, voxel.rgb, dirlight), color.rgb, color.a), voxel.a + color.a);
                 minDist = dist;
 
                 if (color.a >= 1.0) {

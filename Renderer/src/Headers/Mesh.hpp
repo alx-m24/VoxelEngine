@@ -14,17 +14,15 @@ public:
 	std::vector<Vertex> vertices;
 	std::vector<unsigned int> indices;
 	std::vector<Texture> textures;
-	unsigned int VAO;
 
 public:
 	Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures);
 
 public:
-	// Don't forget to activate/use shader first
 	void draw(Shader& shader);
-		
+
 private:
-	unsigned int VBO, EBO;
+	unsigned int VAO, VBO, EBO;
 
 	void setupMesh();
 };

@@ -1,21 +1,14 @@
 #include "Model.hpp"
 
-glm::mat4 getModelMatrix(Transformations& transformation)
-{
-    glm::mat4 model = glm::mat4(1.0f);
-
-    model = glm::translate(model, transformation.position);
-    model = glm::rotate(model, glm::radians(transformation.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-    model = glm::rotate(model, glm::radians(transformation.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-    model = glm::rotate(model, glm::radians(transformation.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-    model = glm::scale(model, transformation.scale);
-
-    return model;
-}
-
 Model::Model(std::string path)
 {
 	this->loadModel(path);
+}
+
+void Model::draw(Shader& shader)
+{
+    shader.use();
+    for (unsigned int i = 0; i < meshes.size(); ++i) meshes[i].draw(shader);
 }
 
 void Model::loadModel(std::string path)

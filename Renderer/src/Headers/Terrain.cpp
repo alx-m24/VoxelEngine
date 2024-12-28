@@ -1,13 +1,12 @@
 #include "Terrain.hpp"
 
-void Terrain::generate(std::array<glm::vec4, VoxelNum* chunkNum>* voxels, std::array<glm::vec4, chunkNum>* chunks, unsigned int Seed)
+void Terrain::generate(unsigned int voxelSSBO, std::array<glm::vec4, chunkNum>* chunks, unsigned int Seed)
 {
 	chunks->fill(glm::vec4(0.0f));
-	voxels->fill(glm::vec4(0.0f));
 
 	float chunkMaxPos = ChunkSize * VoxelSize;
 
-	(*chunks)[0] = glm::vec4(0.0f);
+	(*chunks)[0] = glm::vec4(0.0f, 0.0f, 0.0f, 0.0f);
 	(*chunks)[1] = glm::vec4(chunkMaxPos, 0.0f, 0.0f, 0.0f);
 	(*chunks)[2] = glm::vec4(-chunkMaxPos, 0.0f, 0.0f, 0.0f);
 	(*chunks)[3] = glm::vec4(0.0f, 0.0f, chunkMaxPos, 0.0f);
@@ -35,13 +34,17 @@ void Terrain::generate(std::array<glm::vec4, VoxelNum* chunkNum>* voxels, std::a
 					glm::vec3 index = toGridPos(position - chunkPos);
 
 					glm::vec4 color = (noise > 0.5f) ? getColor(glm::vec3(i, j, k)) : glm::vec4(0.0f);
+					unsigned int idx = toIdx(index) + chunkIdx * VoxelNum;
 
-					(*voxels)[toIdx(index) + chunkIdx * VoxelNum] = color;
+					glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
+					glBufferSubData(GL_SHADER_STORAGE_BUFFER, 16 * idx, 16, &color);
 				}
 			}
 		}
 	}
 }
+
+// TODO: add chunk loading and unloading
 
 glm::vec4 Terrain::getColor(glm::vec3 idx) {
 	float random = (float)(rand()) / RAND_MAX;

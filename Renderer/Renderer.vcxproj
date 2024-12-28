@@ -148,6 +148,8 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="src\Shaders\Rasterized.frag" />
+    <None Include="src\Shaders\Rasterized.vert" />
     <None Include="src\Shaders\Shader.frag" />
     <None Include="src\Shaders\Shader.vert" />
   </ItemGroup>

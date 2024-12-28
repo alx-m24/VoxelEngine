@@ -2,13 +2,12 @@
 
 Mesh::Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures)
 {
-	this->vertices = vertices;
-	this->indices = indices;
-	this->textures = textures;
+    this->vertices = vertices;
+    this->indices = indices;
+    this->textures = textures;
 
-	this->setupMesh();
+    this->setupMesh();
 }
-
 
 void Mesh::draw(Shader& shader)
 {
@@ -20,6 +19,9 @@ void Mesh::draw(Shader& shader)
         // retrieve texture number (the N in diffuse_textureN)
         std::string number;
         std::string name = textures[i].type;
+        
+        name = name.substr(8, name.length() - 8);
+
         if (name == "diffuse")
             number = std::to_string(diffuseNr++);
         else if (name == "specular")
@@ -28,6 +30,12 @@ void Mesh::draw(Shader& shader)
         shader.setInt(("material." + name).c_str(), i);
         glBindTexture(GL_TEXTURE_2D, textures[i].id);
     }
+    glActiveTexture(GL_TEXTURE0);
+
+    // draw mesh
+    glBindVertexArray(VAO);
+    glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
 }
 
 void Mesh::setupMesh()

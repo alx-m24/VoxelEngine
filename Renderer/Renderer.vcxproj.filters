@@ -71,6 +71,12 @@
     <None Include="src\Shaders\Shader.vert">
       <Filter>Resource Files</Filter>
     </None>
+    <None Include="src\Shaders\Rasterized.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="src\Shaders\Rasterized.frag">
+      <Filter>Resource Files</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Headers\Camera.hpp">

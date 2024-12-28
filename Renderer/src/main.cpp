@@ -15,6 +15,7 @@
 #include "Headers/IO/Input.hpp"
 #include "Headers/Camera.hpp"
 #include "Headers/Terrain.hpp"
+#include "Headers/Model.hpp"
 
 using namespace IO;
 
@@ -38,12 +39,15 @@ int main() {
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);
 
+	stbi_set_flip_vertically_on_load(true);
+
 	if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress))
 	{
 		std::cerr << "Failed to initialize GLAD" << std::endl;
 		return -1;
 	}
 
+	glEnable(GL_DEPTH_TEST);
 #pragma endregion
 
 #pragma region GUI
@@ -61,22 +65,33 @@ int main() {
 
 #pragma region Shader
 	const std::string VertexPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Shader.vert";
+	const std::string rasterVertexPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Rasterized.vert";
 	const std::string FragPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Shader.frag";
+	const std::string rasterFragPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Rasterized.frag";
 
-	Shader shader(VertexPath, FragPath);
+	Shader voxelShader(VertexPath, FragPath);
+	Shader rasterized(rasterVertexPath, rasterFragPath);
+#pragma endregion
+
+#pragma region Models
+	Model backbag("C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Models\\BackBag\\backpack.obj");
 #pragma endregion
 
 #pragma region Objects
 	std::array<glm::vec4, chunkNum >* chunks = new std::array<glm::vec4, chunkNum>;
-	std::array<glm::vec4, VoxelNum* chunkNum>* voxels = new std::array<glm::vec4, VoxelNum* chunkNum>;
-
-	Terrain terrain;
-	terrain.generate(voxels, chunks, 987654132);
 
 	// Number of bytes following the std140 layout rule
 	// N = 4 bytes
 	// vec4 = 4N
 	// Therefore 1 element is (4 * N) = (4 * 4) = 16 bytes
+	unsigned int voxelSSBO;
+	glGenBuffers(1, &voxelSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
+	glBufferData(GL_SHADER_STORAGE_BUFFER, VoxelNum * chunkNum * 16, nullptr, GL_DYNAMIC_DRAW);
+	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, voxelSSBO);
+
+	Terrain terrain;
+	terrain.generate(voxelSSBO, chunks, 1587343);
 
 	unsigned int chunkSSBO;
 	glGenBuffers(1, &chunkSSBO);
@@ -84,20 +99,14 @@ int main() {
 	glBufferData(GL_SHADER_STORAGE_BUFFER, chunks->size() * 16, chunks->data(), GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, chunkSSBO);
 
-	unsigned int voxelSSBO;
-	glGenBuffers(1, &voxelSSBO);
-	glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
-	glBufferData(GL_SHADER_STORAGE_BUFFER, voxels->size() * 16, voxels->data(), GL_DYNAMIC_DRAW);
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, voxelSSBO);
-
-	Camera camera(window, shader);
+	Camera camera(window, voxelShader);
 
 	camera.Position = glm::vec3(16.0f);
 
 	glm::vec3 lightDir = { 0.0, -1.0, 0.0 };
 	float ambient = 0.2f;
 	float diffuse = 0.8f;
-	float specular = 0.05f;
+	float specular = 0.25f;
 	glm::vec3 color = glm::vec3(1.0f);
 	bool shadows = true;
 
@@ -157,32 +166,61 @@ int main() {
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		shader.use();
+		camera.update(window, voxelShader, dt);
 
-		shader.use();
-		camera.update(window, shader, dt);
+#pragma region Rasterized
+		rasterized.use();
 
-		shader.setInt("viewingOptions", viewingOptions);
+		glm::mat4 model = glm::mat4(1.0f);
 
-		shader.setVec3("dirlight.direction", glm::normalize(lightDir));
-		shader.setVec3("dirlight.ambient", glm::vec3(ambient));
-		shader.setVec3("dirlight.diffuse", glm::vec3(diffuse));
-		shader.setVec3("dirlight.specular", glm::vec3(specular));
-		shader.setVec3("dirlight.color", color);
-		shader.setBool("dirlight.shadows", shadows);
+		model = glm::translate(model, glm::vec3(15.0f, 15.0f, 20.0f));
+		model = glm::scale(model, glm::vec3(0.5f));
+
+		rasterized.setMat4("model", model);
+		rasterized.setMat4("view", camera.viewMatrix);
+		rasterized.setMat4("projection", camera.projectionMatrix);
+		rasterized.setFloat("material.shininess", 30);
+
+		rasterized.setVec3("viewPos", camera.Position);
+
+		rasterized.setVec3("dirLight.direction", glm::normalize(lightDir));
+		rasterized.setVec3("dirLight.ambient", glm::vec3(ambient));
+		rasterized.setVec3("dirLight.diffuse", glm::vec3(diffuse));
+		rasterized.setVec3("dirLight.specular", glm::vec3(specular));
+		rasterized.setVec3("dirLight.color", color);
+#pragma endregion
+
+#pragma region Voxels
+		voxelShader.use();
+
+		voxelShader.setInt("viewingOptions", viewingOptions);
+
+		voxelShader.setVec3("dirlight.direction", glm::normalize(lightDir));
+		voxelShader.setVec3("dirlight.ambient", glm::vec3(ambient));
+		voxelShader.setVec3("dirlight.diffuse", glm::vec3(diffuse));
+		voxelShader.setVec3("dirlight.specular", glm::vec3(specular));
+		voxelShader.setVec3("dirlight.color", color);
+		voxelShader.setBool("dirlight.shadows", shadows);
+#pragma endregion
 
 		processInput(window);
 #pragma endregion
 
 #pragma region Render
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-		shader.use();
+#pragma region Rasterized
+		backbag.draw(rasterized);
+#pragma endregion
+
+#pragma region Voxels
+		voxelShader.use();
 
 		glBindVertexArray(VAO);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
+#pragma endregion
+		
 #pragma region GUI
 
 		ImGui::ShowMetricsWindow();
@@ -203,6 +241,8 @@ int main() {
 			ImGui::Begin("Camera");
 
 			ImGui::DragFloat3("Position", &camera.Position[0], 0.01f);
+
+			ImGui::DragFloat("FOV", &camera.FOV, 1.0f, 0.0f);
 
 			ImGui::RadioButton("Lighting", &viewingOptions, 0);
 			ImGui::RadioButton("Colors", &viewingOptions, 1);

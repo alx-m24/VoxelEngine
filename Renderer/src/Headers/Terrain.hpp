@@ -4,6 +4,8 @@
 
 #include "PerlinNoise/PerlinNoise.hpp"
 #include <glm/glm.hpp>
+#include <glad/glad.h>
+#include <iostream>
 
 constexpr unsigned int ChunkSize = 16 * 4; // Number of voxels per chunk
 constexpr float VoxelSize = 1.0f / 4.0f;
@@ -28,7 +30,7 @@ class Terrain
 public:
 	Terrain() {};
 
-	void generate(std::array<glm::vec4, VoxelNum * chunkNum>* voxels, std::array<glm::vec4, chunkNum>* chunks, unsigned int Seed);
+	void generate(unsigned int voxelSSBO, std::array<glm::vec4, chunkNum>* chunks, unsigned int Seed);
 	glm::vec4 getColor(glm::vec3 idx);
 };
 
