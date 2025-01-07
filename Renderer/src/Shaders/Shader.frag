@@ -6,17 +6,16 @@ uniform float fov;
 uniform mat3 uViewMatrix;
 uniform vec2 uResolution;
 uniform vec3 uOrigin;
-uniform vec3 uDirection;
 
 #define MIN_POSITIVE_FLOAT 0.0001
 
-const int ChunkSize = 16 * 1; // Number of voxels per chunk
-const float VoxelSize = 1.0 / 1.0;
+const int ChunkSize = 16 * 4; // Number of voxels per chunk
+const float VoxelSize = 1.0 / 4.0;
 const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 uniform float maxDist;
 
-const int renderRadius = 1;
+const int renderRadius = 8;
 const int numberOfChunksInAStraightLine = (2 * renderRadius + 1);
 const int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
 
@@ -37,7 +36,7 @@ uniform int viewingOptions;
 uniform float reflection;
 
 layout(std140, binding = 0) buffer Chunks {
-    vec4 chunks[chunkNum]; // vec4(posX, posY, posZ, nothing);
+    vec4 chunks[chunkNum]; // vec4(posX, posY, posZ, a);
 };
 
 layout(std140, binding = 1) buffer Voxels {
@@ -61,9 +60,9 @@ vec3 getPos(vec3 chunkPos, vec3 currentIdx);
 
 void main() {
 	vec2 aspectRatio = vec2(uResolution.x / uResolution.y, 1.0);
-	vec2 uv = 2.0 * gl_FragCoord.xy / uResolution - 1.0;
-	uv *= aspectRatio * fov;
-	vec3 rayDirection = normalize(vec3(uv, -1.0) * uViewMatrix);
+	vec2 uv = gl_FragCoord.xy / uResolution;
+	vec2 Normalized_uv = 2.0 * uv - 1.0;
+	vec3 rayDirection = normalize(vec3(Normalized_uv * aspectRatio * fov, -1.0) * uViewMatrix);
 
     vec4 color;
     vec3 pos, normal;
@@ -85,21 +84,30 @@ void main() {
         lastminDist =  minDist;
     }
 
-    if (color.a == 0.0) discard;
+    float normalizedDist = distance(pos, uOrigin) / maxDist;
 
-    if (viewingOptions == 0)
+    if (viewingOptions == 0) {
+        if (color.a == 0.0) discard;
         if (color.a == 1.0) fragColor = vec4(getLight(pos, rayDirection, normal, color.rgb, dirlight), 1.0);
         else fragColor = vec4(color.rgb, 1.0);
-    else if (viewingOptions == 1)
+    }
+    else if (viewingOptions == 1) {
+        if (color.a == 0.0) discard;
 	    fragColor = vec4(color.rgb, 1.0);
-    else if (viewingOptions == 2)
+    }
+    else if (viewingOptions == 2) {
+        if (color.a == 0.0) discard;
 	    fragColor = vec4(normal.rgb, 1.0);
-    else
-        fragColor = vec4(vec3(distance(pos, uOrigin) / maxDist), 1.0);
+    }
+    else if (viewingOptions == 3) {
+        if (color.a == 0.0) normalizedDist = 1.0;
+        fragColor = vec4(vec3(normalizedDist), 1.0);
+    }
+
 }
 
 bool inShadow(vec3 position, vec3 lightDir) {
-    position = position + lightDir * VoxelSize;
+    position += lightDir * VoxelSize;
 
     vec3 pos, normal;
     float minDist = maxDist;
@@ -149,16 +157,10 @@ vec4 shadowRayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDi
         return vec4(0.0);
     }
 
-    vec3 position = origin;
-
-    float Min = 0.0;
+    float Min = max(0.0, tmin);
     float Max = min(minDist, tmax);
-    //float Max = (tmax - (2.0f * VoxelSize) < minDist) ? tmax : minDist;
 
-    if (tmin > 0.0) {
-        position = origin + direction * tmin;
-        Min = tmin;
-    }
+    vec3 position = origin + direction * Min;
 
 	vec3 currentIdx = ceil((position - chunkPos) / VoxelSize);
 	vec3 previousIdx = currentIdx;
@@ -223,11 +225,11 @@ vec4 shadowRayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDi
 
     float dist = Min;
 
+    // Seems like dist is never greater than max;
 	while (dist < Max) {
         if (isValid(currentIdx)) {
             uint idx = toIdx(currentIdx) + (chunkIdx * VoxelNum);
-            vec4 voxel = voxels[idx];
-            if (voxel.a > 0.0) return vec4(1.0);
+            if (voxels[idx].a > 0.0) return vec4(1.0);
         }
 
         previousIdx = currentIdx;
@@ -282,10 +284,6 @@ vec3 getLight(vec3 position, vec3 rayDir, vec3 normal, vec3 color, DirLight ligh
 }
 
 vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, out vec3 pos, out vec3 normal) {
-    if (direction.x == 0.0) direction.x = MIN_POSITIVE_FLOAT;
-    if (direction.y == 0.0) direction.y = MIN_POSITIVE_FLOAT;
-    if (direction.z == 0.0) direction.z = MIN_POSITIVE_FLOAT;
-
     vec3 chunkPos = chunks[chunkIdx].xyz;
     vec3 minChunkPos = chunkPos - VoxelSize;
     vec3 maxChunkPos = chunkPos + vec3(ChunkSize * VoxelSize) - VoxelSize;

@@ -117,11 +117,12 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <FunctionLevelLinking>true</FunctionLevelLinking>
-      <IntrinsicFunctions>true</IntrinsicFunctions>
       <SDLCheck>true</SDLCheck>
       <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <ConformanceMode>true</ConformanceMode>
       <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -140,6 +141,8 @@
     <ClCompile Include="src\Headers\imgui\imgui_impl_opengl3.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_tables.cpp" />
     <ClCompile Include="src\Headers\imgui\imgui_widgets.cpp" />
+    <ClCompile Include="src\Headers\imgui\implot.cpp" />
+    <ClCompile Include="src\Headers\imgui\implot_items.cpp" />
     <ClCompile Include="src\Headers\IO\Input.cpp" />
     <ClCompile Include="src\Headers\Mesh.cpp" />
     <ClCompile Include="src\Headers\Model.cpp" />
@@ -149,8 +152,6 @@
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="src\Shaders\Rasterized.frag" />
-    <None Include="src\Shaders\Rasterized.vert" />
     <None Include="src\Shaders\Shader.frag" />
     <None Include="src\Shaders\Shader.vert" />
   </ItemGroup>
@@ -163,12 +164,15 @@
     <ClInclude Include="src\Headers\imgui\imgui_impl_opengl3.h" />
     <ClInclude Include="src\Headers\imgui\imgui_impl_opengl3_loader.h" />
     <ClInclude Include="src\Headers\imgui\imgui_internal.h" />
+    <ClInclude Include="src\Headers\imgui\implot.h" />
+    <ClInclude Include="src\Headers\imgui\implot_internal.h" />
     <ClInclude Include="src\Headers\imgui\imstb_rectpack.h" />
     <ClInclude Include="src\Headers\imgui\imstb_textedit.h" />
     <ClInclude Include="src\Headers\imgui\imstb_truetype.h" />
     <ClInclude Include="src\Headers\IO\Input.hpp" />
     <ClInclude Include="src\Headers\Mesh.hpp" />
     <ClInclude Include="src\Headers\Model.hpp" />
+    <ClInclude Include="src\Headers\MyFuncs\myFuncs.hpp" />
     <ClInclude Include="src\Headers\PerlinNoise\PerlinNoise.hpp" />
     <ClInclude Include="src\Headers\Shaders\Shader.hpp" />
     <ClInclude Include="src\Headers\Terrain.hpp" />

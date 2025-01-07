@@ -66,18 +66,18 @@
     <ClCompile Include="src\Headers\ChunkSystem.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="src\Headers\imgui\implot.cpp">
+      <Filter>Imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Headers\imgui\implot_items.cpp">
+      <Filter>Imgui</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="src\Shaders\Shader.frag">
       <Filter>Resource Files</Filter>
     </None>
     <None Include="src\Shaders\Shader.vert">
-      <Filter>Resource Files</Filter>
-    </None>
-    <None Include="src\Shaders\Rasterized.vert">
-      <Filter>Resource Files</Filter>
-    </None>
-    <None Include="src\Shaders\Rasterized.frag">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>
@@ -137,6 +137,15 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\Headers\ChunkSystem.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Headers\imgui\implot.h">
+      <Filter>Imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Headers\imgui\implot_internal.h">
+      <Filter>Imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="src\Headers\MyFuncs\myFuncs.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -15,6 +15,8 @@ namespace IO {
 
 	extern float lastX;
 	extern float lastY;
+
+	extern unsigned int depthTex;
 }
 
 using namespace IO;
@@ -25,6 +27,9 @@ void inline framebuffer_size_callback(GLFWwindow* window, int width, int height)
 
 	SCR_WIDTH = width;
 	SCR_HEIGHT = height;
+
+	glBindTexture(GL_TEXTURE_2D, depthTex);
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, SCR_WIDTH, SCR_HEIGHT, 0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
 }
 
 void inline mouse_callback(GLFWwindow* window, double xposIn, double yposIn)

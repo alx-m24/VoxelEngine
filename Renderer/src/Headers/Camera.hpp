@@ -7,6 +7,7 @@
 // Other
 #include "IO/Input.hpp"
 #include "Shaders/Shader.hpp"
+#include "Terrain.hpp"
 
 class Camera {
 private:
@@ -26,10 +27,9 @@ public:
     float Pitch = -4.0f;
     float FOV = 45.0f;
     float mouseSens = 0.08f;
-    float far = 100.0f;
+    float far = static_cast<float>(renderRadius * ChunkSize) * 1.5f * VoxelSize;
     const float MovementSpeed = 8.0f; 
     glm::mat4 viewMatrix;
-    glm::mat4 projectionMatrix;
 
 public:
     Camera(GLFWwindow* window, Shader& shader);

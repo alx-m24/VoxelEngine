@@ -8,36 +8,54 @@ Terrain::Terrain(unsigned int seed, unsigned int voxelSSBO) : voxelSSBO(voxelSSB
 	srand(seed);
 }
 
-// TODO: Add threading here
-
-void Terrain::generate(std::array<glm::vec4, chunkNum>* chunks)
+void Terrain::generate(std::array<glm::vec4, chunkNum>* chunks, glm::vec3 cameraPos)
 {
-	const float denominator = 0.5f * (ChunkSize * VoxelSize);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
+	voxelsPtr = static_cast<glm::vec4*>(glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY));
+
+	std::vector<std::thread> threads;
 
 	for (int chunkIdx = 0; chunkIdx < chunkNum; ++chunkIdx) {
-		glm::vec3 chunkPos = glm::vec3((*chunks)[chunkIdx]);
+		threads.emplace_back(std::thread(&Terrain::generateChunk, &(*this), cameraPos, chunks, chunkIdx));
+		//generateChunk(cameraPos, chunks, chunkIdx);
+	}
 
-		for (int i = 0; i < ChunkSize; ++i) {
-			for (int j = 0; j < ChunkSize; ++j) {
-				for (int k = 0; k < ChunkSize; ++k) {
-					glm::vec3 position = (glm::vec3(i, j, k) * VoxelSize) + (VoxelSize / 2.0f) + chunkPos;
+	for (std::thread& thread : threads) {
+		if (thread.joinable()) {
+			thread.join();
+		}
+	}
 
-					const double noise = perlin.noise3D_01(position.x / denominator, position.y / denominator, position.z / denominator);
+	glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
+}
 
-					glm::vec3 index = toGridPos(position - chunkPos);
+// TODO: Move this to a compute shader
 
-					glm::vec4 color = (noise > 0.5f) ? getColor(glm::vec3(i, j, k)) : glm::vec4(0.0f);
-					unsigned int idx = toIdx(index) + chunkIdx * VoxelNum;
+void Terrain::generateChunk(glm::vec3 cameraPos, std::array<glm::vec4, chunkNum>* chunks, int chunkIdx)
+{
+	glm::vec3 chunkPos = glm::vec3((*chunks)[chunkIdx]);
 
-					glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
-					glBufferSubData(GL_SHADER_STORAGE_BUFFER, 16 * idx, 16, &color);
-				}
+	const float denominator = 0.5f * (ChunkSize * VoxelSize);
+
+	for (int i = 0; i < ChunkSize; ++i) {
+		for (int j = 0; j < ChunkSize; ++j) {
+			for (int k = 0; k < ChunkSize; ++k) {
+				glm::vec3 position = (glm::vec3(i, j, k) * VoxelSize) + (VoxelSize / 2.0f) + chunkPos;
+
+				const double noise = perlin.noise3D_01(position.x / denominator, position.y / denominator, position.z / denominator);
+
+				glm::vec3 index = toGridPos(position - chunkPos);
+
+				glm::vec4 color = (noise > 0.5f) ? getColor(glm::vec3(i, j, k), ChunkSize) : glm::vec4(0.0f);
+				unsigned int idx = toIdx(index) + chunkIdx * VoxelNum;
+
+				voxelsPtr[idx] = color;
 			}
 		}
 	}
 }
 
-glm::vec4 Terrain::getColor(glm::vec3 idx) {
+glm::vec4 Terrain::getColor(glm::vec3 idx, float ChunkSize) {
 	float random = (float)(rand()) / RAND_MAX;
 	random /= 10.0f;
 

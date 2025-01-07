@@ -5,6 +5,7 @@
 #include "Headers/imgui/imgui.h"
 #include "Headers/imgui/imgui_impl_glfw.h"
 #include "Headers/imgui/imgui_impl_opengl3.h"
+#include "Headers/imgui/implot.h"
 // Other
 #include <array>
 #include <thread>
@@ -54,9 +55,14 @@ int main() {
 #pragma region GUI
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
+	ImPlot::CreateContext();
 	ImGuiIO& io = ImGui::GetIO(); (void)io;
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
 	io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+	std::array<float, 100> frames;
+	frames.fill(0.0f);
+	int frameNum = 0;
 
 	ImGui::StyleColorsDark();
 
@@ -66,16 +72,13 @@ int main() {
 
 #pragma region Shader
 	const std::string VertexPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Shader.vert";
-	const std::string rasterVertexPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Rasterized.vert";
 	const std::string FragPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Shader.frag";
-	const std::string rasterFragPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Rasterized.frag";
 
 	Shader voxelShader(VertexPath, FragPath);
-	Shader rasterized(rasterVertexPath, rasterFragPath);
 #pragma endregion
 
 #pragma region Models
-	Model backbag("C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Models\\BackBag\\backpack.obj");
+
 #pragma endregion
 
 #pragma region Objects
@@ -111,6 +114,8 @@ int main() {
 	bool shadows = true;
 
 	int viewingOptions = 0;
+
+	std::unordered_map<std::string, float> timings;
 #pragma endregion
 
 #pragma region Quad
@@ -149,6 +154,7 @@ int main() {
 	float myTime = 0.0f;
 	float lastTime = 0.0f;
 	float dt = 0.0f;
+	float tempTime;
 #pragma endregion
 
 #pragma region Main Loop
@@ -166,33 +172,16 @@ int main() {
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
+		tempTime = static_cast<float>(glfwGetTime());
 		camera.update(window, voxelShader, dt);
-
+		timings["Camera Update"] = static_cast<float>(glfwGetTime()) - tempTime;
+		
+		tempTime = static_cast<float>(glfwGetTime());
 		chunkSys.update();
-
-#pragma region Rasterized
-		rasterized.use();
-
-		glm::mat4 model = glm::mat4(1.0f);
-
-		model = glm::translate(model, glm::vec3(15.0f, 15.0f, 20.0f));
-		model = glm::scale(model, glm::vec3(0.5f));
-
-		rasterized.setMat4("model", model);
-		rasterized.setMat4("view", camera.viewMatrix);
-		rasterized.setMat4("projection", camera.projectionMatrix);
-		rasterized.setFloat("material.shininess", 30);
-
-		rasterized.setVec3("viewPos", camera.Position);
-
-		rasterized.setVec3("dirLight.direction", glm::normalize(lightDir));
-		rasterized.setVec3("dirLight.ambient", glm::vec3(ambient));
-		rasterized.setVec3("dirLight.diffuse", glm::vec3(diffuse));
-		rasterized.setVec3("dirLight.specular", glm::vec3(specular));
-		rasterized.setVec3("dirLight.color", color);
-#pragma endregion
+		timings["Chunk Update"] = static_cast<float>(glfwGetTime()) - tempTime;
 
 #pragma region Voxels
+		tempTime = static_cast<float>(glfwGetTime());
 		voxelShader.use();
 
 		voxelShader.setInt("viewingOptions", viewingOptions);
@@ -203,29 +192,76 @@ int main() {
 		voxelShader.setVec3("dirlight.specular", glm::vec3(specular));
 		voxelShader.setVec3("dirlight.color", color);
 		voxelShader.setBool("dirlight.shadows", shadows);
+		timings["Voxels Update"] = static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
 
 		processInput(window);
 #pragma endregion
 
 #pragma region Render
+
+#pragma region Clear Buffers
 		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-#pragma region Rasterized
-		backbag.draw(rasterized);
 #pragma endregion
 
 #pragma region Voxels
+		tempTime = static_cast<float>(glfwGetTime());
+
 		voxelShader.use();
 
 		glBindVertexArray(VAO);
 		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+		timings["Voxels Draw"] = static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
 		
 #pragma region GUI
+		{
+			ImGui::Begin("Performance");
 
-		ImGui::ShowMetricsWindow();
+			ImGui::SeparatorText("Framerate");
+
+			ImGui::Text("FPS: ");
+			ImGui::SameLine();
+
+			ImGui::Text(std::to_string(static_cast<int>(io.Framerate)).c_str());
+
+			if (frameNum >= frames.size()) frameNum = 0;
+			frames[frameNum] = std::round(io.Framerate);
+			++frameNum;
+
+			ImGui::PlotLines("Frames", frames.data(), frames.size(), 0, NULL, 0.0f);
+
+			ImGui::SeparatorText("Timings");
+
+			std::vector<const char*> ids;
+			std::pair<std::string, float> maxPerformance = { "", 0 };
+			std::vector<float> values;
+
+			for (auto& timing : timings) {
+				ids.push_back(timing.first.data());
+				values.push_back(timing.second * 1000.0f);
+
+				if (timing.second > maxPerformance.second) maxPerformance = { timing.first, timing.second };
+
+				ImGui::Text(timing.first.c_str());
+				ImGui::SameLine();
+				ImGui::Text(std::string(": " + std::to_string(timing.second * 1000.0f) + "ms").c_str());
+			}
+
+			{
+				ImPlot::BeginPlot("Timings");
+
+				ImPlot::PlotPieChart(ids.data(), values.data(), ids.size(), 0.0, 0.0, 1.0, "%.6f ms");
+
+				ImPlot::EndPlot();
+			}
+
+			ImGui::Text(std::string("Max Overhead: " + maxPerformance.first + " -> " + std::to_string(maxPerformance.second) + "ms").c_str());
+
+			ImGui::End();
+		}
 
 		{
 			ImGui::Begin("Light");
@@ -270,6 +306,7 @@ int main() {
 
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
+	ImPlot::DestroyContext();
 	ImGui::DestroyContext();
 
 	glfwDestroyWindow(window);
@@ -278,7 +315,3 @@ int main() {
 	return EXIT_SUCCESS;
 #pragma endregion
 }
-
-// TODO: Add 3D-rasterized models to voxels convertion
-// TODO: Add colored shadows
-// TODO: Add point lights
