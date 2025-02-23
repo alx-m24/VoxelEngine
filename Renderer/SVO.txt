@@ -1,0 +1,22 @@
+SVO -> May have 8 children:
+	- 1 chunk = 1 SVO
+	- Steps:
+		1) If chunk/SVO is empty: End the octree/it is a leaf
+		2) Else: Subdivide into 8 children
+		3) If the new children are of the same size as 8 voxels: End octree/it is a leaf
+		4) Else: restart from step 1 for each child
+	- Stored & Sent:
+		1) CPU:
+			- Struct SVO {
+					bool isLeaf;
+					float size;
+					vec3 lowerCorner;
+					SVO children[8];
+				}
+		2) Linearized for SSBO:
+			- vec4(vec3(lowerCorner), size) -> 4-th component is negative if it is a leaf
+		3) Array:
+			- vec4 SVO = {root, c1, c2, c3, c4, c5, c6, c7, c8, cc1, cc2, cc3, cc4, cc5, cc6, cc7, cc8...}
+			- To get child: childIdx = currIdx * 8 + targetChildNum;
+		4) Chunks:
+			- vec4 chunk = {vec3(pos), first SVO node index};

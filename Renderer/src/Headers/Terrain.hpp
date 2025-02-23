@@ -14,9 +14,10 @@ constexpr unsigned int ChunkSize = 16 * 4; // Number of voxels per chunk
 constexpr float VoxelSize = 1.0f / 4.0f;
 constexpr int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
-constexpr int renderRadius = 8;
+constexpr int renderRadius = 2;
 constexpr int numberOfChunksInAStraightLine = (2 * renderRadius + 1);
-constexpr int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
+//constexpr int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
+constexpr int chunkNum = 1;
 
 static constexpr unsigned int toIdx(glm::vec3 position) {
 	return static_cast<int>(position.x) + static_cast<int>(position.y) * ChunkSize + static_cast<int>(position.z) * ChunkSize * ChunkSize;

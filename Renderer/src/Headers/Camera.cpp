@@ -35,6 +35,8 @@ void Camera::update(GLFWwindow* window, Shader& shader, float dt)
 
     viewMatrix = glm::lookAt(Position, Position + front, WorldUp);
 
+    shader.use();
+
     shader.setVec2("uResolution", SCR_WIDTH, SCR_HEIGHT);
     shader.setMat3("uViewMatrix", viewMatrix);
     shader.setVec3("uOrigin", Position);

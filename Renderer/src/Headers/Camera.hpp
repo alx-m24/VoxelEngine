@@ -27,7 +27,7 @@ public:
     float Pitch = -4.0f;
     float FOV = 45.0f;
     float mouseSens = 0.08f;
-    float far = static_cast<float>(renderRadius * ChunkSize) * 1.5f * VoxelSize;
+    float far = static_cast<float>(renderRadius * ChunkSize * VoxelSize) * 2.5f;
     const float MovementSpeed = 8.0f; 
     glm::mat4 viewMatrix;
 

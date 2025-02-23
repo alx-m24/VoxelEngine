@@ -9,4 +9,3 @@ float IO::lastX = IO::SCR_WIDTH / 2.0f;
 float IO::lastY = IO::SCR_HEIGHT / 2.0f;
 bool IO::lastEsc = false;
 bool IO::useCam = false;
-unsigned int IO::depthTex = 0;

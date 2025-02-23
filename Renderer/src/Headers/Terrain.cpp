@@ -50,6 +50,8 @@ void Terrain::generateChunk(glm::vec3 cameraPos, std::array<glm::vec4, chunkNum>
 				unsigned int idx = toIdx(index) + chunkIdx * VoxelNum;
 
 				voxelsPtr[idx] = color;
+
+				if (idx == 0 && color.a == 0.0f) voxelsPtr[0].a = -0.01f;
 			}
 		}
 	}

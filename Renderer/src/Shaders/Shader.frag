@@ -15,9 +15,10 @@ const int VoxelNum = ChunkSize * ChunkSize * ChunkSize;
 
 uniform float maxDist;
 
-const int renderRadius = 8;
+const int renderRadius = 2;
 const int numberOfChunksInAStraightLine = (2 * renderRadius + 1);
-const int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
+//const int chunkNum = numberOfChunksInAStraightLine * numberOfChunksInAStraightLine;
+const int chunkNum = 1;
 
 struct DirLight {
     vec3 direction;
@@ -36,11 +37,15 @@ uniform int viewingOptions;
 uniform float reflection;
 
 layout(std140, binding = 0) buffer Chunks {
-    vec4 chunks[chunkNum]; // vec4(posX, posY, posZ, a);
+    vec4 chunks[chunkNum]; // vec4(posX, posY, posZ, first svo index);
 };
 
 layout(std140, binding = 1) buffer Voxels {
     vec4 voxels[VoxelNum * chunkNum]; // vec4(r, g, b, alpha + reflection) 
+};
+
+layout(std140, binding = 2) buffer SVOs {
+    vec4 svo[];
 };
 
 uint toIdx(vec3 position) {
@@ -62,7 +67,9 @@ void main() {
 	vec2 aspectRatio = vec2(uResolution.x / uResolution.y, 1.0);
 	vec2 uv = gl_FragCoord.xy / uResolution;
 	vec2 Normalized_uv = 2.0 * uv - 1.0;
+
 	vec3 rayDirection = normalize(vec3(Normalized_uv * aspectRatio * fov, -1.0) * uViewMatrix);
+    vec3 rayOrigin = uOrigin;
 
     vec4 color;
     vec3 pos, normal;
@@ -71,7 +78,7 @@ void main() {
     float transparentDist = minDist;
     
     for (int i = 0; i < chunkNum; ++i) {
-        vec4 newColor = rayMarch(uOrigin, rayDirection, i, minDist, pos, normal);
+        vec4 newColor = rayMarch(rayOrigin, rayDirection, i, minDist, pos, normal);
         if (newColor.a == 1.0) {
             if (minDist < transparentDist) color = newColor;
             else color = vec4(mix(newColor.rgb, color.rgb, color.a), 1.0);
@@ -84,7 +91,7 @@ void main() {
         lastminDist =  minDist;
     }
 
-    float normalizedDist = distance(pos, uOrigin) / maxDist;
+    float normalizedDist = distance(pos, rayOrigin) / maxDist;
 
     if (viewingOptions == 0) {
         if (color.a == 0.0) discard;
@@ -103,7 +110,56 @@ void main() {
         if (color.a == 0.0) normalizedDist = 1.0;
         fragColor = vec4(vec3(normalizedDist), 1.0);
     }
+}
 
+vec4 traverseSVO(vec3 origin, vec3 direction, int chunkIdx, float minDist, inout float Min, inout float Max) {
+    int svoIdx = int(chunks[chunkIdx].a);
+
+    vec3 chunkPos = svo[svoIdx].xyz;
+    float size = svo[svoIdx].a;
+
+    if (size < 0.0) return vec4(0.0);
+
+    size = abs(size);
+
+    vec3 minChunkPos = chunkPos - VoxelSize;
+    vec3 maxChunkPos = minChunkPos + vec3(size);
+
+    vec3 dirfrac = 1.0 / direction;
+
+    float t1 = (minChunkPos.x - origin.x) * dirfrac.x;
+	float t2 = (maxChunkPos.x - origin.x) * dirfrac.x;
+	float t3 = (minChunkPos.y - origin.y) * dirfrac.y;
+	float t4 = (maxChunkPos.y - origin.y) * dirfrac.y;
+	float t5 = (minChunkPos.z - origin.z) * dirfrac.z;
+	float t6 = (maxChunkPos.z - origin.z) * dirfrac.z;
+
+	float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6)) - VoxelSize;
+	float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6)) + VoxelSize;
+
+	// if tmax < 0, ray (line) is intersecting AABB, but the whole AABB is behind us
+	if (tmax < 0.0)
+	{
+		return vec4(0.0);
+	}
+
+	// if tmin > tmax, ray doesn't intersect AABB
+	if (tmin > tmax)
+	{
+		return vec4(0.0);
+	}
+
+    if (tmin > minDist)
+    {
+        return vec4(0.0);
+    }
+
+    Min = max(0.0, tmin);
+    Max = min(minDist, tmax);
+
+    
+
+    return vec4(origin + direction * Min, 1.0);
 }
 
 bool inShadow(vec3 position, vec3 lightDir) {
@@ -285,42 +341,17 @@ vec3 getLight(vec3 position, vec3 rayDir, vec3 normal, vec3 color, DirLight ligh
 
 vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, out vec3 pos, out vec3 normal) {
     vec3 chunkPos = chunks[chunkIdx].xyz;
-    vec3 minChunkPos = chunkPos - VoxelSize;
-    vec3 maxChunkPos = chunkPos + vec3(ChunkSize * VoxelSize) - VoxelSize;
-
     vec3 dirfrac = 1.0 / direction;
 
-    float t1 = (minChunkPos.x - origin.x) * dirfrac.x;
-	float t2 = (maxChunkPos.x - origin.x) * dirfrac.x;
-	float t3 = (minChunkPos.y - origin.y) * dirfrac.y;
-	float t4 = (maxChunkPos.y - origin.y) * dirfrac.y;
-	float t5 = (minChunkPos.z - origin.z) * dirfrac.z;
-	float t6 = (maxChunkPos.z - origin.z) * dirfrac.z;
+    float Min;
+    float Max;
 
-	float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6)) - VoxelSize;
-	float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6)) + VoxelSize;
+    vec4 temp = traverseSVO(origin, direction, chunkIdx, minDist, Min, Max);
+    if (temp.a == 0.0) return vec4(0.0);
+    
+    vec3 position = temp.xyz;
 
-	// if tmax < 0, ray (line) is intersecting AABB, but the whole AABB is behind us
-	if (tmax < 0.0)
-	{
-		return vec4(0.0);
-	}
-
-	// if tmin > tmax, ray doesn't intersect AABB
-	if (tmin > tmax)
-	{
-		return vec4(0.0);
-	}
-
-    if (tmin > minDist)
-    {
-        return vec4(0.0);
-    }
-
-    float Min = max(0.0, tmin);
-    float Max = min(minDist, tmax);
-
-    vec3 position = origin + direction * Min;
+    //vec3 position = origin + direction * Min;
 
 	vec3 currentIdx = ceil((position - chunkPos) / VoxelSize);
 	vec3 previousIdx = currentIdx;

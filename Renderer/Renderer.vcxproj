@@ -147,13 +147,18 @@
     <ClCompile Include="src\Headers\Mesh.cpp" />
     <ClCompile Include="src\Headers\Model.cpp" />
     <ClCompile Include="src\Headers\Shaders\Shader.cpp" />
+    <ClCompile Include="src\Headers\SVO.cpp" />
     <ClCompile Include="src\Headers\Terrain.cpp" />
     <ClCompile Include="src\Headers\Textures\Textures.cpp" />
     <ClCompile Include="src\main.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <None Include="src\Shaders\Clear.frag" />
+    <None Include="src\Shaders\Clear.vert" />
     <None Include="src\Shaders\Shader.frag" />
     <None Include="src\Shaders\Shader.vert" />
+    <None Include="src\Shaders\Voxelize.frag" />
+    <None Include="src\Shaders\Voxelize.vert" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\Headers\Camera.hpp" />
@@ -175,9 +180,13 @@
     <ClInclude Include="src\Headers\MyFuncs\myFuncs.hpp" />
     <ClInclude Include="src\Headers\PerlinNoise\PerlinNoise.hpp" />
     <ClInclude Include="src\Headers\Shaders\Shader.hpp" />
+    <ClInclude Include="src\Headers\SVO.hpp" />
     <ClInclude Include="src\Headers\Terrain.hpp" />
     <ClInclude Include="src\Headers\Textures\Textures.hpp" />
     <ClInclude Include="src\Headers\Vertex\Vertex.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="SVO.txt" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

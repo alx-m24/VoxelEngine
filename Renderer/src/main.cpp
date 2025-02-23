@@ -10,16 +10,19 @@
 #include <array>
 #include <thread>
 #include <iostream>
+#include <filesystem>
 // My headers
 #include "Headers/PerlinNoise/PerlinNoise.hpp"
 #include "Headers/Shaders/Shader.hpp"
 #include "Headers/ChunkSystem.hpp"
 #include "Headers/IO/Input.hpp"
-#include "Headers/Camera.hpp"
 #include "Headers/Terrain.hpp"
+#include "Headers/Camera.hpp"
 #include "Headers/Model.hpp"
 
 using namespace IO;
+
+namespace fs = std::filesystem;
 
 int main() {
 #pragma region init
@@ -36,7 +39,7 @@ int main() {
 		return EXIT_FAILURE;
 	}
 	glfwMakeContextCurrent(window);
-	glfwSwapInterval(1);
+	//glfwSwapInterval(1);
 
 	glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
 	glfwSetCursorPosCallback(window, mouse_callback);
@@ -71,14 +74,28 @@ int main() {
 #pragma endregion
 
 #pragma region Shader
-	const std::string VertexPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Shader.vert";
-	const std::string FragPath = "C:\\Users\\alexa\\OneDrive\\Coding\\VoxelEngine\\Renderer\\Renderer\\src\\Shaders\\Shader.frag";
+	std::string currentPath = fs::current_path().string();
+
+	std::cout << currentPath << std::endl;
+
+	std::string VertexPath = currentPath + "\\src\\Shaders\\Shader.vert";
+	std::string FragPath = currentPath + "\\src\\Shaders\\Shader.frag";
 
 	Shader voxelShader(VertexPath, FragPath);
+
+	VertexPath = currentPath + "\\src\\Shaders\\Voxelize.vert";
+	FragPath = currentPath + "\\src\\Shaders\\Voxelize.frag";
+
+	Shader voxelizeShader(VertexPath, FragPath);
+
+	VertexPath = currentPath + "\\src\\Shaders\\Clear.vert";
+	FragPath = currentPath + "\\src\\Shaders\\Clear.frag";
+
+	Shader clearShader(VertexPath, FragPath);
 #pragma endregion
 
 #pragma region Models
-
+	Model BackBag(currentPath + "\\src\\Models\\BackBag\\backpack.obj");
 #pragma endregion
 
 #pragma region Objects
@@ -104,7 +121,11 @@ int main() {
 	glBufferData(GL_SHADER_STORAGE_BUFFER, chunks->size() * 16, nullptr, GL_DYNAMIC_DRAW);
 	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, chunkSSBO);
 
-	ChunkSystem chunkSys(camera, chunks, voxelSSBO, chunkSSBO, 1587343);
+	unsigned int svoSSBO;
+	glGenBuffers(1, &svoSSBO);
+	glBindBuffer(GL_SHADER_STORAGE_BUFFER, svoSSBO);
+
+	ChunkSystem chunkSys(camera, chunks, voxelSSBO, svoSSBO, chunkSSBO, 1587343);
 
 	glm::vec3 lightDir = { 0.0, -1.0, 0.0 };
 	float ambient = 0.2f;
@@ -157,6 +178,10 @@ int main() {
 	float tempTime;
 #pragma endregion
 
+	static glm::vec3 position = glm::vec3(-16.0f);
+	static float scale = 1.0f;
+	glm::mat4 model = glm::mat4(1.0f);
+
 #pragma region Main Loop
 	while (!glfwWindowShouldClose(window)) {
 #pragma region Time
@@ -172,13 +197,11 @@ int main() {
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
+#pragma region Camera
 		tempTime = static_cast<float>(glfwGetTime());
 		camera.update(window, voxelShader, dt);
 		timings["Camera Update"] = static_cast<float>(glfwGetTime()) - tempTime;
-		
-		tempTime = static_cast<float>(glfwGetTime());
-		chunkSys.update();
-		timings["Chunk Update"] = static_cast<float>(glfwGetTime()) - tempTime;
+#pragma endregion
 
 #pragma region Voxels
 		tempTime = static_cast<float>(glfwGetTime());
@@ -193,6 +216,27 @@ int main() {
 		voxelShader.setVec3("dirlight.color", color);
 		voxelShader.setBool("dirlight.shadows", shadows);
 		timings["Voxels Update"] = static_cast<float>(glfwGetTime()) - tempTime;
+#pragma endregion
+
+#pragma region Converting to voxels
+		tempTime = static_cast<float>(glfwGetTime());
+
+		model = glm::mat4(1.0f);
+		model = glm::translate(model, position);
+		model = glm::scale(model, glm::vec3(scale));
+
+		voxelizeShader.use();
+		voxelizeShader.setMat4("model", model);
+
+		BackBag.draw(voxelizeShader);
+
+		timings["Voxelization"] = static_cast<float>(glfwGetTime()) - tempTime;
+#pragma endregion
+
+#pragma region Chunks
+		tempTime = static_cast<float>(glfwGetTime());
+		chunkSys.update();
+		timings["Chunk Update"] = static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
 
 		processInput(window);
@@ -215,8 +259,16 @@ int main() {
 
 		timings["Voxels Draw"] = static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
-		
+
 #pragma region GUI
+		{
+			ImGui::Begin("Object");
+
+			ImGui::DragFloat3("Position", &position[0]);
+			ImGui::DragFloat("Scale", &scale, 0.01f);
+
+			ImGui::End();
+		}
 		{
 			ImGui::Begin("Performance");
 
@@ -226,6 +278,9 @@ int main() {
 			ImGui::SameLine();
 
 			ImGui::Text(std::to_string(static_cast<int>(io.Framerate)).c_str());
+
+			ImGui::SameLine();
+			ImGui::Text(std::string(" (" + std::to_string(dt * 1000.0f) + "ms)").c_str());
 
 			if (frameNum >= frames.size()) frameNum = 0;
 			frames[frameNum] = std::round(io.Framerate);
@@ -262,7 +317,7 @@ int main() {
 
 			ImGui::End();
 		}
-
+		
 		{
 			ImGui::Begin("Light");
 
@@ -289,13 +344,23 @@ int main() {
 
 			ImGui::End();
 		}
-		
+
 
 		ImGui::Render();
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 #pragma endregion
-
 		glfwSwapBuffers(window);
+#pragma endregion
+
+#pragma region Clearing Voxels
+		tempTime = static_cast<float>(glfwGetTime());
+
+		clearShader.use();
+		clearShader.setMat4("model", model);
+
+		BackBag.draw(clearShader);
+
+		timings["Voxelization"] += static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
 	}
 #pragma endregion

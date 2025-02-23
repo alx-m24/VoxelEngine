@@ -72,12 +72,27 @@
     <ClCompile Include="src\Headers\imgui\implot_items.cpp">
       <Filter>Imgui</Filter>
     </ClCompile>
+    <ClCompile Include="src\Headers\SVO.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="src\Shaders\Shader.frag">
       <Filter>Resource Files</Filter>
     </None>
     <None Include="src\Shaders\Shader.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="src\Shaders\Voxelize.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="src\Shaders\Voxelize.vert">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="src\Shaders\Clear.frag">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="src\Shaders\Clear.vert">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>
@@ -148,5 +163,11 @@
     <ClInclude Include="src\Headers\MyFuncs\myFuncs.hpp">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="src\Headers\SVO.hpp">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="SVO.txt" />
   </ItemGroup>
 </Project>
