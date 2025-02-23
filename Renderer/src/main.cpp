@@ -24,6 +24,8 @@ using namespace IO;
 
 namespace fs = std::filesystem;
 
+// TODO: Voxelize only when model is changed and update svo only when reloading chunks or voxelizing
+
 int main() {
 #pragma region init
 	glfwInit();
@@ -221,14 +223,27 @@ int main() {
 #pragma region Converting to voxels
 		tempTime = static_cast<float>(glfwGetTime());
 
-		model = glm::mat4(1.0f);
-		model = glm::translate(model, position);
-		model = glm::scale(model, glm::vec3(scale));
+		glm::mat4 newModel = glm::mat4(1.0f);
+		newModel = glm::translate(newModel, position);
+		newModel = glm::scale(newModel, glm::vec3(scale));
 
-		voxelizeShader.use();
-		voxelizeShader.setMat4("model", model);
+		if (newModel != model) {
+#pragma region Clearing Voxels
+				clearShader.use();
+				clearShader.setMat4("model", model);
 
-		BackBag.draw(voxelizeShader);
+				BackBag.draw(clearShader);
+#pragma endregion
+
+			model = newModel;
+
+			voxelizeShader.use();
+			voxelizeShader.setMat4("model", model);
+
+			BackBag.draw(voxelizeShader);
+			
+			chunkSys.reloadChunks();
+		}
 
 		timings["Voxelization"] = static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
@@ -350,17 +365,6 @@ int main() {
 		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 #pragma endregion
 		glfwSwapBuffers(window);
-#pragma endregion
-
-#pragma region Clearing Voxels
-		tempTime = static_cast<float>(glfwGetTime());
-
-		clearShader.use();
-		clearShader.setMat4("model", model);
-
-		BackBag.draw(clearShader);
-
-		timings["Voxelization"] += static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
 	}
 #pragma endregion

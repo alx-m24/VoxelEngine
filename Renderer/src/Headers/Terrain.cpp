@@ -11,7 +11,7 @@ Terrain::Terrain(unsigned int seed, unsigned int voxelSSBO) : voxelSSBO(voxelSSB
 void Terrain::generate(std::array<glm::vec4, chunkNum>* chunks, glm::vec3 cameraPos)
 {
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelSSBO);
-	voxelsPtr = static_cast<glm::vec4*>(glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_WRITE_ONLY));
+	voxelsPtr = static_cast<glm::vec4*>(glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_WRITE));
 
 	std::vector<std::thread> threads;
 
@@ -29,8 +29,6 @@ void Terrain::generate(std::array<glm::vec4, chunkNum>* chunks, glm::vec3 camera
 	glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 }
 
-// TODO: Move this to a compute shader
-
 void Terrain::generateChunk(glm::vec3 cameraPos, std::array<glm::vec4, chunkNum>* chunks, int chunkIdx)
 {
 	glm::vec3 chunkPos = glm::vec3((*chunks)[chunkIdx]);
@@ -45,9 +43,11 @@ void Terrain::generateChunk(glm::vec3 cameraPos, std::array<glm::vec4, chunkNum>
 				const double noise = perlin.noise3D_01(position.x / denominator, position.y / denominator, position.z / denominator);
 
 				glm::vec3 index = toGridPos(position - chunkPos);
+				unsigned int idx = toIdx(index) + chunkIdx * VoxelNum;
+
+				if (voxelsPtr[idx] != glm::vec4(0.0f)) continue;
 
 				glm::vec4 color = (noise > 0.5f) ? getColor(glm::vec3(i, j, k), ChunkSize) : glm::vec4(0.0f);
-				unsigned int idx = toIdx(index) + chunkIdx * VoxelNum;
 
 				voxelsPtr[idx] = color;
 

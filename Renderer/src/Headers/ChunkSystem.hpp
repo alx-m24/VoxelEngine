@@ -21,10 +21,10 @@ private:
 	unsigned int chunkSSBO;
 
 private:
-	void reloadChunks();
 	void sendChunks();
 
 public:
+	void reloadChunks();
 	void update();
 };
 

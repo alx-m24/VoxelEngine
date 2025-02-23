@@ -28,19 +28,19 @@ void SVOSystem::updateSVOs(std::array<glm::vec4, chunkNum>* chunks)
 	glBindBuffer(GL_SHADER_STORAGE_BUFFER, voxelsSSBO);
 	voxelPtr = static_cast<glm::vec4*>(glMapBuffer(GL_SHADER_STORAGE_BUFFER, GL_READ_ONLY));
 
-	//std::vector<std::thread> threads;
+	std::vector<std::thread> threads;
 
 	for (int i = 0; i < chunks->size(); ++i) {
-		updateSVO(chunks, i); // single threaded
-		//threads.emplace_back(&SVOSystem::updateSVO, &(*this), chunks, i); // threaded
+		//updateSVO(chunks, i); // single threaded
+		threads.emplace_back(&SVOSystem::updateSVO, &(*this), chunks, i); // threaded
 	}
 
-	/*
+	
 	for (std::thread& thread : threads) {
 		if (thread.joinable()) {
 			thread.join();
 		}
-	}*/
+	}
 
 	glUnmapBuffer(GL_SHADER_STORAGE_BUFFER);
 
@@ -60,7 +60,6 @@ void SVOSystem::updateSVO(std::array<glm::vec4, chunkNum>* chunks, unsigned int 
 	head.lowerCorner = glm::vec3((*chunks)[chunkIdx]);
 	head.size = ChunkSize * VoxelSize;
 
-	// Try threading here maybe
 	subdivideSVOnode(head, glm::vec3(0.0f), glm::vec3(16.0f), chunkIdx);
 }
 
@@ -82,6 +81,8 @@ void SVOSystem::subdivideSVOnode(SVO& node, const glm::vec3 minIdx, const glm::v
 	float newVoxelNum = newSize / VoxelSize; // Along one axis
 	glm::vec3 axes = glm::vec3(0.0f);
 
+	std::vector<std::thread> threads;
+
 	for (axes.x = 0; axes.x <= 1; ++axes.x) {
 		for (axes.y = 0; axes.y <= 1; ++axes.y) {
 			for (axes.z = 0; axes.z <= 1; ++axes.z) {
@@ -92,11 +93,16 @@ void SVOSystem::subdivideSVOnode(SVO& node, const glm::vec3 minIdx, const glm::v
 				glm::vec3 newMinIdx = minIdx + newVoxelNum * axes;
 				glm::vec3 newMaxIdx = newMinIdx + glm::vec3(newVoxelNum);
 
-				// Try threading here maybe
 				subdivideSVOnode(node.children[index], newMinIdx, newMaxIdx, chunkIdx);
 
 				++index;
 			}
+		}
+	}
+
+	for (std::thread& thread : threads) {
+		if (thread.joinable()) {
+			thread.join();
 		}
 	}
 }

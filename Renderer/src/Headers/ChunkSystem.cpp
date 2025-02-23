@@ -7,14 +7,16 @@ ChunkSystem::ChunkSystem(Camera& player, std::array<glm::vec4, chunkNum>* chunks
 
 	svoSystem = new SVOSystem(svoSSBO, voxelSSBO);
 
+	float chunkMaxPos = ChunkSize * VoxelSize;
+	chunkCenter = glm::vec4(glm::round(player.Position / chunkMaxPos) * chunkMaxPos, 1.0f);
+
+
 	reloadChunks();
 }
 
 void ChunkSystem::reloadChunks()
 {
 	float chunkMaxPos = ChunkSize * VoxelSize;
-
-	chunkCenter = glm::vec4(glm::round(player.Position / chunkMaxPos) * chunkMaxPos, 1.0f);
 
 	if (chunkNum == 1) {
 		(*chunks)[0] = (chunkCenter - chunkMaxPos / 2.0f) + (chunkMaxPos * glm::vec4(0.0f, 0.0f, 0.0f, 0.0f));
@@ -52,9 +54,9 @@ void ChunkSystem::update()
 
 
 	if (glm::distance(chunkCenter_2d, playerPos_2d) > ((ChunkSize / 2.0f) * VoxelSize) * 1.0f) {
+		float chunkMaxPos = ChunkSize * VoxelSize;
+		//chunkCenter = glm::vec4(glm::round(player.Position / chunkMaxPos) * chunkMaxPos, 1.0f);
+
 		//reloadChunks();
 	}
-
-	//svoSystem->updateSVOs(chunks);
-	//sendChunks();
 }
