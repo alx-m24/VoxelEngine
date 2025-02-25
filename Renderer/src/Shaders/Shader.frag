@@ -35,6 +35,8 @@ struct DirLight {
 uniform DirLight dirlight;
 uniform int viewingOptions;
 uniform float reflection;
+uniform int svoLimit;
+uniform bool useSVO;
 
 layout(std140, binding = 0) buffer Chunks {
     vec4 chunks[chunkNum]; // vec4(posX, posY, posZ, first svo index);
@@ -112,6 +114,10 @@ void main() {
     }
 }
 
+bool isValidForSVO(vec3 idx) {
+    return (idx.x >= 0.0 && idx.y >= 0.0 && idx.z >= 0.0) && (idx.x < 2 && idx.y < 2 && idx.z < 2);
+}
+
 vec4 traverseSVO(vec3 origin, vec3 direction, int chunkIdx, float minDist, inout float Min, inout float Max) {
     int svoIdx = int(chunks[chunkIdx].a);
 
@@ -134,8 +140,8 @@ vec4 traverseSVO(vec3 origin, vec3 direction, int chunkIdx, float minDist, inout
 	float t5 = (minChunkPos.z - origin.z) * dirfrac.z;
 	float t6 = (maxChunkPos.z - origin.z) * dirfrac.z;
 
-	float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6)) - VoxelSize;
-	float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6)) + VoxelSize;
+	float tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6)) + VoxelSize;
+	float tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6)) - VoxelSize;
 
 	// if tmax < 0, ray (line) is intersecting AABB, but the whole AABB is behind us
 	if (tmax < 0.0)
@@ -157,9 +163,132 @@ vec4 traverseSVO(vec3 origin, vec3 direction, int chunkIdx, float minDist, inout
     Min = max(0.0, tmin);
     Max = min(minDist, tmax);
 
-    
+    vec3 tMax;
+    ivec3 step;
+    vec3 delta;
+    vec3 position = origin + direction * Min;
 
-    return vec4(origin + direction * Min, 1.0);
+    bool traversing = useSVO;
+    bool firstPass = true;
+    
+    while (traversing) {
+        size = abs(svo[svoIdx].a) / 2.0;
+        chunkPos = svo[svoIdx].xyz - VoxelSize + size;
+
+        if (size / VoxelSize < svoLimit) break;
+
+        vec3 currentIdx = ceil((position - chunkPos) / size);
+	    vec3 previousIdx = currentIdx;
+
+        if (direction.x > 0.0) {
+            step.x = 1;
+            delta.x = size * dirfrac.x;
+            previousIdx.x = currentIdx.x + 1;
+            tMax.x = Min + (chunkPos.x + currentIdx.x * size
+                            - position.x) * dirfrac.x;
+        } else if (direction.x < 0.0) {
+            step.x = -1;
+            delta.x = size * -dirfrac.x; 
+            previousIdx.x = currentIdx.x - 1;
+            tMax.x = Min + (chunkPos.x + previousIdx.x * size
+                            - position.x) * dirfrac.x;
+        } else {
+            step.x = 0;
+            delta.x = Max;
+            tMax.x = Max;
+        }
+
+        if (direction.y > 0.0) {
+            step.y = 1;
+            delta.y = size * dirfrac.y;
+            previousIdx.y = currentIdx.y + 1;
+            tMax.y = Min + (chunkPos.y + currentIdx.y * size
+                            - position.y) * dirfrac.y;
+        } else if (direction.y < 0.0) {
+            step.y = -1;
+            delta.y = size * -dirfrac.y;
+            previousIdx.y = currentIdx.y - 1;
+            tMax.y = Min + (chunkPos.y + previousIdx.y * size
+                            - position.y) * dirfrac.y;
+        } else {
+            step.y = 0;
+            delta.y = 0.0;
+            tMax.y = 0.0;
+        }
+
+        if (direction.z > 0.0) {
+            step.z = 1;
+            delta.z = size * dirfrac.z;
+            previousIdx.z = currentIdx.z + 1;
+            tMax.z = Min + (chunkPos.z + currentIdx.z * size
+                        - position.z) * dirfrac.z;
+        } else if (direction.z < 0.0) {
+            step.z = -1;
+            delta.z = size * -dirfrac.z;
+            previousIdx.z = currentIdx.z - 1;
+            tMax.z = Min + (chunkPos.z + previousIdx.z * size
+                        - position.z) * dirfrac.z;
+        } else {
+            step.z = 0;
+            delta.z = 0.0;
+            tMax.z = 0.0;
+        }
+
+        while (isValidForSVO(currentIdx)) {
+            int index = int(currentIdx.x) * 4 + int(currentIdx.y) * 2 + int(currentIdx.z);
+            //int index = int(currentIdx.x) + int(currentIdx.y) * 2 + int(currentIdx.z) * 4;
+
+            int childNum = index + 1;
+
+            int generalArrayIdx = svoIdx * 8 + childNum;
+
+            if (childNum == 1) return vec4(1.0, 0.0, 0.0, 1.0);
+            if (childNum == 2) return vec4(0.0, 1.0, 0.0, 1.0);
+            if (childNum == 3) return vec4(0.0, 0.0, 1.0, 1.0);
+            if (childNum == 4) return vec4(1.0, 0.0, 1.0, 1.0);
+            if (childNum == 5) return vec4(0.0, 1.0, 1.0, 1.0);
+            if (childNum == 6) return vec4(0.5, 0.5, 0.5, 1.0);
+            if (childNum == 7) return vec4(0.5, 0.0, 1.0, 1.0);
+            if (childNum == 8) return vec4(0.0, 0.5, 1.0, 1.0);
+
+            if (svo[generalArrayIdx].a >= 0.0) {
+                svoIdx = generalArrayIdx;
+                break;
+            }
+
+            vec3 lastPos = position;
+
+            if (tMax.x < tMax.y && tMax.x < tMax.z) {
+                // X-axis traversal.
+                currentIdx.x += step.x;
+                tMax.x += delta.x;
+                position.x += delta.x;
+                
+		    } else if (tMax.y < tMax.z) {
+                // Y-axis traversal.
+		    	currentIdx.y += step.y;
+                tMax.y += delta.y;
+                position.y += delta.y;
+            } else {
+                // Z-axis traversal.
+                currentIdx.z += step.z;
+                tMax.z += delta.z;
+                position.z += delta.z;
+            }
+            
+            if (!isValidForSVO(currentIdx)) {
+                position = lastPos;
+                traversing = false;
+                return vec4(0.0, 1.0, 0.0, 1.0);
+                break;
+            }
+        }
+        firstPass = false;
+        return vec4(1.0);
+    }
+
+    return vec4(1.0);
+    return vec4(position, 1.0);
 }
 
 bool inShadow(vec3 position, vec3 lightDir) {
@@ -348,10 +477,10 @@ vec4 rayMarch(vec3 origin, vec3 direction, int chunkIdx, inout float minDist, ou
 
     vec4 temp = traverseSVO(origin, direction, chunkIdx, minDist, Min, Max);
     if (temp.a == 0.0) return vec4(0.0);
+
+    return temp;
     
     vec3 position = temp.xyz;
-
-    //vec3 position = origin + direction * Min;
 
 	vec3 currentIdx = ceil((position - chunkPos) / VoxelSize);
 	vec3 previousIdx = currentIdx;

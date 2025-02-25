@@ -135,8 +135,9 @@ int main() {
 	float specular = 0.25f;
 	glm::vec3 color = glm::vec3(1.0f);
 	bool shadows = true;
+	bool useSVO = true;
 
-	int viewingOptions = 0;
+	int viewingOptions = 1;
 
 	std::unordered_map<std::string, float> timings;
 #pragma endregion
@@ -217,6 +218,8 @@ int main() {
 		voxelShader.setVec3("dirlight.specular", glm::vec3(specular));
 		voxelShader.setVec3("dirlight.color", color);
 		voxelShader.setBool("dirlight.shadows", shadows);
+		voxelShader.setBool("useSVO", useSVO);
+		voxelShader.setInt("svoLimit", chunkSys.getSVOLimit());
 		timings["Voxels Update"] = static_cast<float>(glfwGetTime()) - tempTime;
 #pragma endregion
 
@@ -229,10 +232,10 @@ int main() {
 
 		if (newModel != model) {
 #pragma region Clearing Voxels
-				clearShader.use();
-				clearShader.setMat4("model", model);
+			clearShader.use();
+			clearShader.setMat4("model", model);
 
-				BackBag.draw(clearShader);
+			BackBag.draw(clearShader);
 #pragma endregion
 
 			model = newModel;
@@ -351,6 +354,8 @@ int main() {
 			ImGui::DragFloat3("Position", &camera.Position[0], 0.01f);
 
 			ImGui::DragFloat("FOV", &camera.FOV, 1.0f, 0.0f);
+
+			ImGui::Checkbox("Use SVO", &useSVO);
 
 			ImGui::RadioButton("Lighting", &viewingOptions, 0);
 			ImGui::RadioButton("Colors", &viewingOptions, 1);

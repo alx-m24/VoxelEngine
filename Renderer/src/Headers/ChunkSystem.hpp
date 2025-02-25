@@ -26,6 +26,7 @@ private:
 public:
 	void reloadChunks();
 	void update();
+	int getSVOLimit() { return svoSystem->voxelCountLimit; };
 };
 
 #endif // !CHUNKSYSTEM_H

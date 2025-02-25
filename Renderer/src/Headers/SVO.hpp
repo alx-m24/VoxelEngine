@@ -23,7 +23,7 @@ private:
 	unsigned int svoSSBO;
 	unsigned int voxelsSSBO;
 
-private:
+public:
 	// Along one axis (TODO: experiment with this value)
 	const int voxelCountLimit = 8;
 	unsigned int maxDepth;
