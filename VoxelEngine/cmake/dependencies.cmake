@@ -88,11 +88,13 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(stb)
 
 target_include_directories(${PROJECT_NAME}
-    PRIVATE 
+    PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${glm_SOURCE_DIR}
+    PRIVATE
         ${glfw_SOURCE_DIR}/include
         ${stb_SOURCE_DIR}
+        ${imgui_SOURCE_DIR}/backends
 )
 
 target_link_libraries(imgui PRIVATE glfw glad)
@@ -100,13 +102,15 @@ target_include_directories(imgui PRIVATE ${imgui_SOURCE_DIR}/backends)
 
 target_link_libraries(implot PRIVATE imgui)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE
-    assimp
-    implot
-    imgui
-    glad
-    glfw
-    glm
+target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+        glm
+    PRIVATE
+        assimp
+        implot
+        imgui
+        glad
+        glfw
 )
 
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)

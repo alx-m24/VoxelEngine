@@ -1,11 +1,9 @@
 #include <memory>
 #include <iostream>
 
-
-
 #include "VoxelEngine/utils/version.hpp"
 #include "VoxelEngine/Game/Game.hpp"
-#include "VoxelEngine/Engine.hpp"
+#include "VoxelEngine/Engine/Engine.hpp"
 
 VoxelEngine::Version version(0u, 1u, 0u);
 
@@ -13,7 +11,8 @@ class Demo : public VoxelEngine::Game {
     public:
         Demo() : VoxelEngine::Game("Demo", version) {};
 
-        void Init() override {
+        void Init(VoxelEngine::EngineService& service) override {
+            service.setVSync(true);
             std::cout << version.toString() << std::endl;
         }
 
