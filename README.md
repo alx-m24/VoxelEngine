@@ -2,6 +2,8 @@
 
 A voxel engine written in C++. Design notes for the GPU SVO system and the per-voxel deferred shadow pipeline built on top of it.
 
+---
+
 # Table of Contents
 
 - [GPU Sparse Voxel Octree (SVO) Design](#gpu-sparse-voxel-octree-svo-design)
@@ -9,6 +11,7 @@ A voxel engine written in C++. Design notes for the GPU SVO system and the per-v
   - [High-Level Architecture](#high-level-architecture)
   - [GPU Memory Layout](#gpu-memory-layout)
   - [Static Tree Layout](#static-tree-layout)
+  - [Deepest Level = 1 Voxel](#deepest-level--1-voxel)
   - [Node Structure](#node-structure)
   - [GPU Construction](#gpu-construction)
     - [Pass 1 — Deepest Level](#pass-1--deepest-level)
@@ -105,6 +108,23 @@ This means:
 - No GPU allocator
 - No atomics
 - Child indices are computed mathematically
+
+## Deepest Level = 1 Voxel
+
+The tree's deepest level maps 1:1 to a single voxel — this is the standard definition of an SVO, not a variant. Combined with the static/complete layout above, this means the deepest level alone contains `8^maxDepth` nodes, and since every shallower level also fully exists, the whole tree costs roughly that number plus another ~1/7th on top (geometric series over the levels above).
+
+This is a deliberate trade of memory for speed:
+
+- **What we pay**: full per-chunk memory scales fast with depth (32³ voxels at depth 5, 64³ at depth 6, 128³ at depth 7, and so on). At roughly 20-24 bytes per node, a chunk pushed all the way to 1-voxel depth can run into tens of MB by itself.
+- **What we get**: zero atomics, zero GPU allocator, zero pointer-chasing — a node's children, parent, and world position are all recoverable by pure `(idx-1)/8` / `(idx-1)%8` arithmetic (see the Per-Voxel Deferred Shadow Pipeline section below, which depends directly on this property). This is the same trade the "Why Static Memory?" section calls out, just made concrete at the leaf level specifically.
+
+**Why this is affordable in practice:**
+
+- **LOD caps the worst case.** `ChunkInfo.maxDepth` is per-chunk, so only *near* chunks are ever pushed to full 1-voxel depth. Distant chunks stop at a shallower depth, and memory drops by roughly 8x per level dropped — so the real worst case is a handful of near chunks at full depth plus many distant chunks at progressively cheaper depths, not every resident chunk paying the full cost.
+- **Only close chunks are fully resident at all.** Streaming means far chunks aren't just shallower, they may not be loaded yet in the first place.
+- **Modern GPU VRAM comfortably absorbs this.** Tens of MB per near chunk, times a small number of near chunks, is trivial next to several GB of typical VRAM — SSBOs in the hundreds of MB to low GB range are routine for open-world/voxel titles today.
+
+Worth pinning down empirically once render distance is chosen: pick a render distance (in chunks), a full-depth chunk size, and a depth-falloff curve, then compute actual worst-case resident memory. This is a quick calculation and gives a concrete answer rather than an assumption.
 
 ## Node Structure
 
