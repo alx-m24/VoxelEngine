@@ -32,7 +32,7 @@ A voxel engine written in C++. Design notes for the GPU SVO system and the per-v
     - [Pass 3 — Composite / Shade](#pass-3--composite--shade-2d-dispatch-per-pixel-again)
   - [Position Recovery](#position-recovery-pure-arithmetic-no-extra-fields)
   - [Key Clarifications](#key-clarifications-things-that-felt-confusing-but-arent)
-  - [Open Decision](#open-decision)
+  - [Open Decision — Resolved](#open-decision--resolved)
   - [Next Steps / Still Open](#next-steps--still-open)
 
 # GPU Sparse Voxel Octree (SVO) Design
@@ -399,58 +399,70 @@ This is the property the shadow pipeline leans on directly: world position is re
 
 ### Pass 1 — Primary ray march (2D dispatch, per pixel)
 
-Existing traversal pass (chunk lookup → `rootIndex` → descend). No change to the traversal logic itself — just store the result instead of shading immediately.
+Existing traversal pass (chunk lookup → `rootIndex` → descend SVO → DDA within the hit leaf's brick). No change to the traversal logic itself — just store the result instead of shading immediately.
 
 ```glsl
-uint globalNodeIndex = traverse(rayOrigin, rayDir); // absolute index into the SSBO
-imageStore(gbufferNodeIndex, pixelCoord, globalNodeIndex); // 2D G-buffer, one uint per texel
+uint nodeIndex;       // which SVO leaf was hit
+uint localVoxelIndex; // which voxel inside that leaf's brick was hit (e.g. 0-63 for a 4³ brick)
+
+traverse(rayOrigin, rayDir, /* out */ nodeIndex, /* out */ localVoxelIndex);
+
+imageStore(gbufferNodeIndex, pixelCoord, nodeIndex);       // 2D G-buffer, one uint per texel
+imageStore(gbufferLocalVoxel, pixelCoord, localVoxelIndex); // 2D G-buffer, one uint per texel
 ```
 
-`gbufferNodeIndex` is a normal 2D G-buffer texture — just like a normal/albedo buffer — that happens to store a node index instead of a color. No reprojection, no camera matrix involved beyond what Pass 1 already does.
+`gbufferNodeIndex` and `gbufferLocalVoxel` are both normal 2D G-buffer textures — just like a normal/albedo buffer — that happen to store integers instead of colors. No reprojection, no camera matrix involved beyond what Pass 1 already does. `node.brickIndex` itself doesn't need to be stored per-pixel; it's a property of the node and can be looked up again via `nodes[nodeIndex].brickIndex` whenever needed, rather than duplicated into the G-buffer.
 
-### Pass 2 — Shadow calculation (dispatch over nodes, NOT pixels)
+### Pass 2 — Shadow calculation (dispatch over voxels, NOT pixels)
 
-Never touches screen coordinates. Operates purely in SSBO node-index space.
+Never touches screen coordinates. Operates purely in SSBO node-index + brick-local space.
 
 ```glsl
-uint globalNodeIndex = <from dispatch: either full node-array pass or unique-list entry>;
+uint nodeIndex;       // from dispatch: either full node-array pass or unique-list entry
+uint localVoxelIndex; // which brick-local voxel this job is for
 
 // derive world position via pure arithmetic — see Position Recovery below
-vec3 voxelWorldPos = recoverWorldPos(globalNodeIndex);
+vec3 voxelWorldPos = recoverWorldPos(nodeIndex, localVoxelIndex);
 
-bool inShadow = shadowRayMarch(voxelWorldPos, lightDir); // ONE ray per unique node
+bool inShadow = shadowRayMarch(voxelWorldPos, lightDir); // ONE ray per unique brick-local voxel
 
-shadowBuffer[globalNodeIndex] = inShadow ? 0.0 : 1.0; // flat buffer, parallel to the node SSBO
+uint shadowKey = nodeIndex * BRICK_VOXEL_COUNT + localVoxelIndex; // e.g. * 64 for a 4³ brick
+shadowBuffer[shadowKey] = inShadow ? 0.0 : 1.0; // flat buffer, sized nodeCount * BRICK_VOXEL_COUNT
 ```
 
 Two ways to feed this pass, chosen based on how many chunks/nodes are resident:
 
-- **Small/bounded set of loaded chunks**: skip dedup entirely. Dispatch Pass 2 over the entire resident node range (or every node up to each chunk's `maxDepth`), one thread per node. Simpler, no atomics; pay for unseen/off-screen nodes but often cheaper overall when the resident set is small.
-- **Large/streaming world with many chunks resident**: build a compacted unique-node list first. In Pass 1, per pixel, hash `globalNodeIndex`, use `atomicCompSwap` on a claim table to detect "first thread to touch this node," and append winners to a compacted list (atomic counter + append). Dispatch Pass 2 only over that list — exactly one shadow ray per unique node actually visible, no wasted work on unseen parts of any resident tree.
+- **Small/bounded set of loaded chunks**: skip dedup entirely. Dispatch Pass 2 over the entire resident (nodeIndex, localVoxelIndex) range, one thread per brick-local voxel. Simpler, no atomics; pay for unseen/off-screen voxels but often cheaper overall when the resident set is small.
+- **Large/streaming world with many chunks resident**: build a compacted unique-key list first. In Pass 1, per pixel, hash `shadowKey`, use `atomicCompSwap` on a claim table to detect "first thread to touch this brick-local voxel," and append winners to a compacted list (atomic counter + append). Dispatch Pass 2 only over that list — exactly one shadow ray per unique voxel actually visible, no wasted work on unseen parts of any resident tree/brick.
 
-(Alternative considered: sort G-buffer entries by node index and run-length-encode duplicates. More overhead — only worth it if a sort pass already exists in the pipeline for other reasons.)
+(Alternative considered: sort G-buffer entries by shadow key and run-length-encode duplicates. More overhead — only worth it if a sort pass already exists in the pipeline for other reasons.)
 
 ### Pass 3 — Composite / shade (2D dispatch, per pixel again)
 
-No raymarching here — just two reads and a multiply.
+No raymarching here — just a couple of reads and a multiply.
 
 ```glsl
-uint globalNodeIndex = imageLoad(gbufferNodeIndex, pixelCoord).x; // 2D fetch, from Pass 1
-float shadow = shadowBuffer[globalNodeIndex];                      // flat buffer fetch, keyed by node index
+uint nodeIndex       = imageLoad(gbufferNodeIndex, pixelCoord).x;  // 2D fetch, from Pass 1
+uint localVoxelIndex = imageLoad(gbufferLocalVoxel, pixelCoord).x; // 2D fetch, from Pass 1
+
+uint shadowKey = nodeIndex * BRICK_VOXEL_COUNT + localVoxelIndex;
+float shadow   = shadowBuffer[shadowKey]; // flat buffer fetch, keyed by combined index
+
 outColor = albedo * shadow * NdotL;
 ```
 
 ## Position Recovery (pure arithmetic, no extra fields)
 
-Walking up from the hit node to its chunk's root, using only `/8` and `%8`:
+Walking up from the hit leaf to its chunk's root, using only `/8` and `%8`, then adding a small flat offset for the brick-local voxel:
 
 ```glsl
-vec3 recoverWorldPos(uint globalNodeIndex, ChunkInfo chunk) {
-    uint localIdx = globalNodeIndex - chunk.rootIndex;
+vec3 recoverWorldPos(uint nodeIndex, uint localVoxelIndex, ChunkInfo chunk) {
+    uint localIdx = nodeIndex - chunk.rootIndex;
 
     vec3 pos = vec3(0);
     float size = chunkSize;
 
+    // walk up the SVO to the leaf's world-space origin/size
     while (localIdx != 0) {
         uint octant = (localIdx - 1) % 8;
         localIdx    = (localIdx - 1) / 8;
@@ -458,44 +470,45 @@ vec3 recoverWorldPos(uint globalNodeIndex, ChunkInfo chunk) {
         pos += size * octantOffset(octant); // octantOffset: (0,0,0)..(1,1,1) per bit of x/y/z
     }
 
+    // add the brick-local voxel offset — flat grid math, no recursion, since a brick is one dense level
+    ivec3 localVoxelCoord = unpackBrickCoord(localVoxelIndex); // e.g. (idx % 4, (idx/4) % 4, idx / 16) for a 4³ brick
+    float voxelSize = size / BRICK_DIM; // BRICK_DIM = 4 for a 4³ brick
+    pos += vec3(localVoxelCoord) * voxelSize;
+
     return chunk.worldPosition + pos;
 }
 ```
 
-No `parentIndex` field, no `packedPath` field, no dependent pointer-chasing memory reads — just register-only integer math, O(depth) iterations. Cheap in absolute terms since it's paid once per unique visible node, not once per pixel.
+No `parentIndex` field, no `packedPath` field, no dependent pointer-chasing memory reads for the SVO part — just register-only integer math, O(depth) iterations. The brick-local step adds a constant handful of extra ops on top, also register-only. Cheap in absolute terms since it's paid once per unique visible brick-local voxel, not once per pixel.
 
-Shadow buffer is a flat array, mirroring the node SSBO 1:1:
+Shadow buffer is a flat array, sized `nodeCount * BRICK_VOXEL_COUNT`, keyed by the combined `nodeIndex * BRICK_VOXEL_COUNT + localVoxelIndex`:
 
 ```glsl
 layout(std430, binding = X) buffer ShadowBuffer {
-    float shadow[]; // shadow[globalNodeIndex] corresponds to nodes[globalNodeIndex]
+    float shadow[]; // shadow[nodeIndex * BRICK_VOXEL_COUNT + localVoxelIndex]
 };
 ```
 
-Same size, same indexing, same lifecycle as the node SSBO — allocated/streamed/hotswapped per chunk alongside it, mirroring the engine's existing chunk load/unload flow (build → upload node block → update `ChunkInfo.rootIndex` → now also alongside a same-sized shadow block).
+Sized and streamed alongside the node SSBO and brick buffer — allocated/hotswapped per chunk together with them, mirroring the engine's existing chunk load/unload flow (build → upload node block → upload brick block → update `ChunkInfo.rootIndex` → now also alongside a matching-size shadow block).
 
 ## Key Clarifications (things that felt confusing but aren't)
 
-- No reverse-projection needed anywhere. The only direction ever computed is pixel → nodeIndex (Pass 1, via existing traversal) and nodeIndex → world position (Pass 2, via the arithmetic walk above). Nothing ever goes node → screen.
-- `gbufferNodeIndex` is a 2D buffer, despite carrying tree-structural information. It's addressed by `pixelCoord` just like a normal/albedo G-buffer texture — the meaning of the stored value is unrelated to dispatch dimensionality.
-- `shadowBuffer` is a flat 1D array, addressed by node index — a completely different address space from the screen, with no 3D grid coordinate system involved.
-- Pass 3 never re-traverses the tree. Traversal happens exactly once (Pass 1); its result (`globalNodeIndex`) is carried forward via the G-buffer.
-- LOD is inherent, not bolted on. A ray stopped early at `chunk.maxDepth` (or at a `terminal` node) simply returns that node's index — Pass 2 computes one shadow ray for it, same as any other node. No separate per-LOD buffers or lookup logic needed.
+- No reverse-projection needed anywhere. The only direction ever computed is pixel → (nodeIndex, localVoxelIndex) (Pass 1, via existing traversal) and (nodeIndex, localVoxelIndex) → world position (Pass 2, via the arithmetic walk above). Nothing ever goes voxel → screen.
+- `gbufferNodeIndex` and `gbufferLocalVoxel` are both 2D buffers, despite carrying tree/brick-structural information. They're addressed by `pixelCoord` just like a normal/albedo G-buffer texture — the meaning of the stored value is unrelated to dispatch dimensionality.
+- `shadowBuffer` is a flat 1D array, addressed by the combined `nodeIndex * BRICK_VOXEL_COUNT + localVoxelIndex` key — a completely different address space from the screen, with no 3D grid coordinate system involved.
+- Pass 3 never re-traverses the tree or the brick. Traversal happens exactly once (Pass 1); its result (`nodeIndex`, `localVoxelIndex`) is carried forward via the G-buffer.
+- LOD is inherent, not bolted on. A ray stopped early at `chunk.maxDepth` (or at a `terminal` node) simply returns that node's index — Pass 2 computes shadow for whichever brick-local voxels were actually hit, same as any other node. No separate per-LOD buffers or lookup logic needed.
+- `node.brickIndex` is never duplicated into the G-buffer. It's a property of the node, re-derivable via `nodes[nodeIndex].brickIndex` whenever actually needed — the G-buffer only needs to carry what traversal computed that isn't already sitting in the node SSBO.
 
-## Open Decision
+## Open Decision — Resolved
 
-Whether to shadow per voxel face, per SVO leaf cell, or per exact brick-local voxel:
-
-- **Per face**: slightly better quality (top face lit, side face shadowed can differ on the same node). Requires storing/addressing by (nodeIndex, faceIndex) instead of just nodeIndex.
-- **Per SVO leaf cell**: simpler, faster, more overtly blocky — matches the stylistic goal directly, but shadow granularity is capped at the leaf's size (e.g. 4³-8³ voxels), not true per-voxel.
-- **Per brick-local voxel**: now that leaves own a dense brick (see Leaf Cap + Dense Brick Traversal), true per-voxel shadow granularity is possible by keying the shadow buffer off `(nodeIndex, brickLocalCoord)` instead of just `nodeIndex`. More storage and slightly more addressing work, but matches full voxel resolution rather than SVO leaf resolution.
+Shadow granularity is **per brick-local voxel** (true per-voxel resolution), not per SVO-leaf-cell or per-face. This was chosen because leaves already own a dense brick (see Leaf Cap + Dense Brick Traversal), so full voxel-resolution shadow is available for roughly the cost of one extra G-buffer channel (`localVoxelIndex`) and a combined shadow-buffer key, rather than being capped at leaf size. Per-face shadow (splitting further by which face of a voxel was hit) remains a possible future refinement on top of this if even finer lighting detail is wanted, but is not part of the current design.
 
 ## Next Steps / Still Open
 
-- Decide full-array-brute-force vs unique-list-with-atomics for Pass 2, based on actual resident node count across loaded chunks.
-- Decide face vs SVO-leaf-cell vs brick-local-voxel shadow granularity.
+- Decide full-array-brute-force vs unique-list-with-atomics for Pass 2, based on actual resident brick-local-voxel count across loaded chunks.
 - Nail down light orientation handling (fixed sun vs arbitrary) for the Pass 2 ray-march/propagation strategy.
 - Consider whether ray-march step size in Pass 2 needs to adapt to a node's depth (coarser nodes = larger effective voxel size = larger safe step), mirroring how the main traversal already handles `maxDepth`/LOD.
-- Decide how the shadow SSBO block is sized/streamed relative to each chunk's node block during load/unload (should mirror the existing `ChunkInfo`-driven streaming flow).
+- Decide how the shadow SSBO block is sized/streamed relative to each chunk's node + brick blocks during load/unload (should mirror the existing `ChunkInfo`-driven streaming flow).
 - Pick a concrete SVO depth cap and brick size (e.g. depth 6 + 4³ bricks vs depth 5 + 8³ bricks) and validate actual per-chunk memory against it.
 - Design the distance-scaled chunk-size mechanism (chunk size growing with distance) to address chunk-count cost at large view distances — depth falloff alone does not solve this.
