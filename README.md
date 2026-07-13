@@ -2,8 +2,6 @@
 
 A voxel engine written in C++. Design notes for the GPU SVO system and the per-voxel deferred shadow pipeline built on top of it.
 
----
-
 # Table of Contents
 
 - [GPU Sparse Voxel Octree (SVO) Design](#gpu-sparse-voxel-octree-svo-design)
@@ -11,7 +9,8 @@ A voxel engine written in C++. Design notes for the GPU SVO system and the per-v
   - [High-Level Architecture](#high-level-architecture)
   - [GPU Memory Layout](#gpu-memory-layout)
   - [Static Tree Layout](#static-tree-layout)
-  - [Deepest Level = 1 Voxel](#deepest-level--1-voxel)
+  - [Leaf Cap + Dense Brick Traversal](#leaf-cap--dense-brick-traversal)
+  - [View Distance & Chunk Scaling](#view-distance--chunk-scaling)
   - [Node Structure](#node-structure)
   - [GPU Construction](#gpu-construction)
     - [Pass 1 — Deepest Level](#pass-1--deepest-level)
@@ -109,22 +108,34 @@ This means:
 - No atomics
 - Child indices are computed mathematically
 
-## Deepest Level = 1 Voxel
+## Leaf Cap + Dense Brick Traversal
 
-The tree's deepest level maps 1:1 to a single voxel — this is the standard definition of an SVO, not a variant. Combined with the static/complete layout above, this means the deepest level alone contains `8^maxDepth` nodes, and since every shallower level also fully exists, the whole tree costs roughly that number plus another ~1/7th on top (geometric series over the levels above).
+The tree's deepest SVO level does **not** go all the way down to 1 voxel. Instead, SVO depth is capped (e.g. 5-6 levels), and each terminal leaf owns a small **dense brick** (e.g. 4³ or 8³ raw voxels) that a normal DDA traversal steps through once the ray reaches that leaf. This replaced an earlier "deepest level = 1 voxel" version of the design, kept below for context on why the change was made.
 
-This is a deliberate trade of memory for speed:
+**Why full 1-voxel SVO depth was too expensive:** with the static/complete layout, going all the way to 1-voxel leaves means the deepest level alone contains `8^maxDepth` nodes, plus another ~1/7th for every shallower level (geometric series). At roughly 20-24 bytes per node, a single chunk pushed to depth 8 (see View Distance & Chunk Scaling below for where depth 8 comes from) costs on the order of 400-500 MB by itself — sustainable for at most one or two chunks, not a workable general strategy.
 
-- **What we pay**: full per-chunk memory scales fast with depth (32³ voxels at depth 5, 64³ at depth 6, 128³ at depth 7, and so on). At roughly 20-24 bytes per node, a chunk pushed all the way to 1-voxel depth can run into tens of MB by itself.
-- **What we get**: zero atomics, zero GPU allocator, zero pointer-chasing — a node's children, parent, and world position are all recoverable by pure `(idx-1)/8` / `(idx-1)%8` arithmetic (see the Per-Voxel Deferred Shadow Pipeline section below, which depends directly on this property). This is the same trade the "Why Static Memory?" section calls out, just made concrete at the leaf level specifically.
+**The fix — split responsibilities:**
 
-**Why this is affordable in practice:**
+- **SVO (capped depth)**: handles macro structure, culling, and LOD. Cheap, because it stops well short of 1-voxel resolution — e.g. depth 6 instead of depth 8 is roughly 64x cheaper.
+- **Dense brick (fixed small size, e.g. 4³ or 8³)**: handles final voxel-level detail, but only exists for terminal leaves that are actually occupied — no tree-wide cost, just a small allocation per populated leaf.
 
-- **LOD caps the worst case.** `ChunkInfo.maxDepth` is per-chunk, so only *near* chunks are ever pushed to full 1-voxel depth. Distant chunks stop at a shallower depth, and memory drops by roughly 8x per level dropped — so the real worst case is a handful of near chunks at full depth plus many distant chunks at progressively cheaper depths, not every resident chunk paying the full cost.
-- **Only close chunks are fully resident at all.** Streaming means far chunks aren't just shallower, they may not be loaded yet in the first place.
-- **Modern GPU VRAM comfortably absorbs this.** Tens of MB per near chunk, times a small number of near chunks, is trivial next to several GB of typical VRAM — SSBOs in the hundreds of MB to low GB range are routine for open-world/voxel titles today.
+Traversal becomes: descend the SVO via `(idx-1)/8` / `(idx-1)%8` arithmetic until `terminal == true` → switch to a normal dense-grid DDA inside that leaf's brick → find the exact voxel hit. This is a standard pattern in production sparse-voxel renderers (coarse tree for macro structure, dense micro-grid at the leaves for fine detail), not something novel or risky.
 
-Worth pinning down empirically once render distance is chosen: pick a render distance (in chunks), a full-depth chunk size, and a depth-falloff curve, then compute actual worst-case resident memory. This is a quick calculation and gives a concrete answer rather than an assumption.
+**Effect on the rest of the design:** none, structurally. The static/complete-tree arithmetic for parent/child/position recovery is unaffected — it still walks the same way, just to a shallower cap. The Per-Voxel Deferred Shadow Pipeline section below still applies unchanged for node-level shadow granularity; see its Open Decision for the option of extending shadow granularity down to brick-local voxel resolution instead.
+
+## View Distance & Chunk Scaling
+
+Concrete target numbers used to validate the memory approach above:
+
+- 16 voxels/meter, 16 meters/chunk → 256 voxels per chunk edge → depth 8 for full 1-voxel resolution (2^8 = 256). This is where the "depth 8 ≈ 400-500 MB per chunk" figure above comes from.
+- Max view distance: 5 km. In chunk units that's 5000/16 ≈ 312 chunks radius — a full sphere at that radius is on the order of **128 million chunks**, and even a forward-facing frustum lands in the tens of millions.
+
+Two separate levers are needed together, not one or the other:
+
+- **Depth falloff per chunk** (exponential decay with distance): solves *per-chunk* memory cost. Dropping just 3 SVO levels cuts memory ~512x; dropping 5 levels cuts ~32,768x. This is why leaf depth is capped at all (see above) and why far chunks are capped even further than near ones.
+- **Chunk size scaling with distance** (not yet finalized): solves *chunk-count* cost. At a fixed 16 m chunk size, tens of millions of chunk entries are needed near 5 km regardless of how cheap each one's internal tree is, since count and internal depth are independent problems. The standard fix (as in clipmap/cascade terrain systems) is to let chunk size itself grow with distance — e.g. near chunks stay 16 m³ at higher depth, far chunks represent 128 m³ or more per entry at a shallow depth — collapsing chunk count the same way depth falloff collapses per-chunk memory.
+
+Both mechanisms are required at these numbers; depth falloff alone does not fix chunk count, and chunk-size scaling alone does not fix per-chunk memory for the chunks nearest the camera.
 
 ## Node Structure
 
@@ -134,11 +145,12 @@ Current design:
 struct Node
 {
     uint firstChild;
+    uint brickIndex;    // index into the dense-brick buffer; valid only when terminal == true and occupied == true
 
-    vec3 averageColor;
+    vec3 averageColor;  // still useful for LOD/distant shading when the brick isn't sampled
 
     bool occupied;      // Region contains at least one voxel
-    bool terminal;      // Stop traversal here
+    bool terminal;      // Stop traversal here — switch to brick DDA
 };
 ```
 
@@ -307,6 +319,8 @@ Traversal stops when:
 - `terminal == true`
 - Maximum LOD depth reached
 
+When traversal stops at `terminal == true` and `occupied == true`, control hands off to a normal dense-grid DDA inside that leaf's brick (`brickIndex`) to find the exact voxel hit — see Leaf Cap + Dense Brick Traversal above. Traversal never needs to descend the SVO past its capped depth.
+
 ## Why Static Memory?
 
 Traditional GPU SVO builders require dynamic allocation, atomics, prefix sums, and node compaction. This design avoids all of that:
@@ -470,15 +484,18 @@ Same size, same indexing, same lifecycle as the node SSBO — allocated/streamed
 
 ## Open Decision
 
-Whether to shadow per voxel face vs per voxel/node cell:
+Whether to shadow per voxel face, per SVO leaf cell, or per exact brick-local voxel:
 
 - **Per face**: slightly better quality (top face lit, side face shadowed can differ on the same node). Requires storing/addressing by (nodeIndex, faceIndex) instead of just nodeIndex.
-- **Per cell**: simpler, faster, more overtly blocky — matches the stylistic goal more directly.
+- **Per SVO leaf cell**: simpler, faster, more overtly blocky — matches the stylistic goal directly, but shadow granularity is capped at the leaf's size (e.g. 4³-8³ voxels), not true per-voxel.
+- **Per brick-local voxel**: now that leaves own a dense brick (see Leaf Cap + Dense Brick Traversal), true per-voxel shadow granularity is possible by keying the shadow buffer off `(nodeIndex, brickLocalCoord)` instead of just `nodeIndex`. More storage and slightly more addressing work, but matches full voxel resolution rather than SVO leaf resolution.
 
 ## Next Steps / Still Open
 
 - Decide full-array-brute-force vs unique-list-with-atomics for Pass 2, based on actual resident node count across loaded chunks.
-- Decide face vs cell shadow granularity.
+- Decide face vs SVO-leaf-cell vs brick-local-voxel shadow granularity.
 - Nail down light orientation handling (fixed sun vs arbitrary) for the Pass 2 ray-march/propagation strategy.
 - Consider whether ray-march step size in Pass 2 needs to adapt to a node's depth (coarser nodes = larger effective voxel size = larger safe step), mirroring how the main traversal already handles `maxDepth`/LOD.
 - Decide how the shadow SSBO block is sized/streamed relative to each chunk's node block during load/unload (should mirror the existing `ChunkInfo`-driven streaming flow).
+- Pick a concrete SVO depth cap and brick size (e.g. depth 6 + 4³ bricks vs depth 5 + 8³ bricks) and validate actual per-chunk memory against it.
+- Design the distance-scaled chunk-size mechanism (chunk size growing with distance) to address chunk-count cost at large view distances — depth falloff alone does not solve this.
