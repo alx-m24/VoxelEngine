@@ -437,57 +437,102 @@ imageStore(gbufferVoxelID, pixelCoord, voxelID); // 2D texture, ivec3-valued tex
 
 `gbufferVoxelID` is a normal 2D G-buffer texture — just like a normal/albedo buffer — that happens to store 3 components (a voxel coordinate) per texel. No reprojection, no camera matrix involved beyond what Pass 1 already does.
 
-### Pass 2 — Shadow calculation (dispatch over voxels, NOT pixels)
+### Pass 2 — Shadow calculation (dispatch over nodes, NOT pixels)
 
-Never touches screen coordinates. Operates purely in voxel-grid space.
+Never touches screen coordinates. Operates purely in SVO node-index space.
 
 ```glsl
-ivec3 voxelID = <from dispatch: either full-grid index or unique-list entry>;
+uint nodeIndex = <from dispatch: either full node-array pass or unique-list entry>;
 
-// grid arithmetic only — no inverse-view, no projection
-vec3 voxelWorldPos = gridOrigin + vec3(voxelID) * voxelSize + voxelSize * 0.5;
+// derive world position from the SVO structure itself (see "SVO Storage" below),
+// NOT from a 3D grid coordinate
+vec3 voxelWorldPos = recoverWorldPos(nodeIndex);
 
-bool inShadow = shadowRayMarch(voxelWorldPos, lightDir); // ONE ray per voxel
+bool inShadow = shadowRayMarch(voxelWorldPos, lightDir); // ONE ray per unique node
 
-imageStore(voxelShadowBuffer, voxelID, inShadow ? 0.0 : 1.0); // 3D texture, addressed by voxel coords
+shadowBuffer[nodeIndex] = inShadow ? 0.0 : 1.0; // flat buffer, parallel to node array
 ```
 
-Two ways to feed this pass, chosen based on grid characteristics:
+Two ways to feed this pass, chosen based on tree/world characteristics:
 
-- **Dense/bounded grid** (small enough, e.g. up to a few million cells): skip dedup entirely. Dispatch Pass 2 over the *entire grid*, one thread per cell. Simpler, no atomics; pay for unseen cells but often cheaper overall for small grids.
-- **Sparse/huge/streaming world**: build a compacted unique-voxel list first.
-  - In Pass 1, per pixel: hash `voxelID`, use `atomicCompSwap` on a claim table to detect "first thread to touch this voxel," and append winners to a compacted list (atomic counter + append).
-  - Dispatch Pass 2 only over that list — exactly one shadow ray per unique voxel actually visible, no wasted work on empty/unseen space.
+- **Small/bounded tree**: skip dedup entirely. Dispatch Pass 2 over the *entire node array* (or every node up to some max depth), one thread per node. Simpler, no atomics; pay for unseen/off-screen nodes but often cheaper overall for small trees.
+- **Large/streaming world**: build a compacted unique-node list first.
+  - In Pass 1, per pixel: hash `nodeIndex`, use `atomicCompSwap` on a claim table to detect "first thread to touch this node," and append winners to a compacted list (atomic counter + append).
+  - Dispatch Pass 2 only over that list — exactly one shadow ray per unique node actually visible, no wasted work on unseen parts of the tree.
 
-(Alternative considered: sort G-buffer entries by voxel ID and run-length-encode duplicates. More overhead — only worth it if a sort pass already exists in the pipeline for other reasons.)
+(Alternative considered: sort G-buffer entries by node index and run-length-encode duplicates. More overhead — only worth it if a sort pass already exists in the pipeline for other reasons.)
 
 ### Pass 3 — Composite / shade (2D dispatch, per pixel again)
 
-No raymarching here — just two texture reads and a multiply.
+No raymarching here — just two reads and a multiply.
 
 ```glsl
-ivec3 voxelID = imageLoad(gbufferVoxelID, pixelCoord).xyz;   // 2D fetch, from Pass 1
-float shadow  = imageLoad(voxelShadowBuffer, voxelID).r;      // 3D fetch, keyed by voxelID
+uint nodeIndex = imageLoad(gbufferNodeIndex, pixelCoord).x;  // 2D fetch, from Pass 1
+float shadow    = shadowBuffer[nodeIndex];                    // flat buffer fetch, keyed by node index
 outColor = albedo * shadow * NdotL;
+```
+
+## SVO Storage & World-Position Recovery
+
+The voxel world is stored as a **flattened SVO (sparse voxel octree)**, built depth-first. Stopping traversal/build at a given depth naturally gives an averaged/coarser node — LOD is inherent to the structure, not a separate system.
+
+```cpp
+struct Node {
+    uint32_t id;
+    uint32_t depth;
+    uint32_t firstChild;   // index of first of 8 contiguous children, or INVALID if leaf
+    uint32_t parentIndex;  // needed for child -> parent walk (see below)
+};
+```
+
+**Why `nodeIndex` alone doesn't give position for free:** because the array is built depth-first, sibling subtrees have variable size (depending on pruning), so there is no fixed arithmetic like a heap's `parent = (i-1)/8` that works in reverse. Recovering a node's position/depth requires walking up via stored parent links, not computed offsets.
+
+**Recovery walk (Pass 2, once per unique node — cheap in absolute terms since it's not per-pixel):**
+
+```glsl
+vec3 pos = vec3(0);
+float size = worldSize;
+uint idx = nodeIndex;
+while (idx != 0) {
+    uint parent = nodes[idx].parentIndex;
+    uint octant = idx - nodes[parent].firstChild; // requires all 8 child slots reserved per node,
+                                                    // even pruned/leaf ones, so offset is consistent
+    size *= 0.5;
+    pos += size * octantOffset(octant); // octantOffset: (0,0,0)..(1,1,1) per bit of x/y/z
+    idx = parent;
+}
+voxelWorldPos = chunkOrigin + pos;
+```
+
+This is pure integer/ALU work plus O(depth) direct memory reads (no search, no dependent pointer-chasing beyond one parent read per level) — negligible next to the cost of the shadow ray march itself, and only paid once per unique visible node rather than once per pixel.
+
+**Shadow buffer is a flat array, not a 3D texture:** since the addressing key is now a flattened node index rather than a 3D grid coordinate, the shadow buffer mirrors the node array directly — same length, same index, hotswapped together whenever the SVO is rebuilt/reloaded.
+
+```glsl
+layout(std430, binding = X) buffer ShadowBuffer {
+    float shadow[]; // shadow[nodeIndex] corresponds to nodes[nodeIndex]
+};
 ```
 
 ## Key Clarifications (things that felt confusing but aren't)
 
-- **No reverse-projection needed anywhere.** The only direction ever computed is pixel → voxelID (Pass 1, via existing DDA) and voxelID → world position (Pass 2, via trivial `origin + id * size` arithmetic). Nothing ever goes voxel → screen.
-- **`gbufferVoxelID` is 2D, not 3D**, despite storing an `ivec3`. Component count (3 numbers per texel) is unrelated to dispatch dimensionality (2D, addressed by `pixelCoord`). Same as how a normal buffer stores a `vec3` without requiring a re-lighting pass to read it.
-- **`voxelShadowBuffer` is a separate 3D volume**, addressed by voxel grid coordinates — a completely different address space from the screen.
-- **Pass 3 never re-raymarches.** The DDA traversal happens exactly once (Pass 1); its result is carried forward via the G-buffer.
+- **No reverse-projection needed anywhere.** The only direction ever computed is pixel → nodeIndex (Pass 1, via existing traversal) and nodeIndex → world position (Pass 2, via the parent-walk above). Nothing ever goes node → screen.
+- **`gbufferNodeIndex` is a 2D buffer**, despite carrying tree-structural information. It's addressed by `pixelCoord` just like a normal/albedo G-buffer texture — component meaning is unrelated to dispatch dimensionality.
+- **`shadowBuffer` is a flat 1D array**, addressed by node index — a completely different address space from the screen, and no longer tied to any 3D grid coordinate system.
+- **Pass 3 never re-traverses the tree.** Traversal happens exactly once (Pass 1); its result (`nodeIndex`) is carried forward via the G-buffer.
+- **LOD is inherent, not bolted on.** A ray hitting a coarse/averaged node at a shallow depth simply returns that node's index — Pass 2 computes one shadow ray for it, same as any other node. No separate per-LOD buffers or lookup logic needed.
 
 ## Open Decision
 
-Whether to shadow **per voxel face** vs **per voxel cell**:
+Whether to shadow **per voxel face** vs **per voxel/node cell**:
 
-- **Per face**: slightly better quality (top face lit, side face shadowed can differ on the same voxel). Requires storing/addressing by (voxelID, faceIndex) instead of just voxelID.
+- **Per face**: slightly better quality (top face lit, side face shadowed can differ on the same node). Requires storing/addressing by (nodeIndex, faceIndex) instead of just nodeIndex.
 - **Per cell**: simpler, faster, more overtly blocky — matches the stylistic goal more directly.
 
 ## Next Steps / Still Open
 
-- Decide dense-grid-brute-force vs unique-list-with-atomics based on actual live voxel count and whether the world streams in chunks.
+- Decide full-array-brute-force vs unique-list-with-atomics for Pass 2, based on actual live/visible node count.
 - Decide face vs cell shadow granularity.
 - Nail down light orientation handling (fixed sun vs arbitrary) for the Pass 2 ray-march/propagation strategy.
-- Decide voxel data storage layout (dense 3D texture vs sparse/brick map) — affects both `voxelWorldPos` computation and how `voxelShadowBuffer` is allocated/addressed.
+- Confirm build process always reserves all 8 child slots per node (even pruned/leaf children) — required for the `octant = idx - nodes[parent].firstChild` trick to stay valid.
+- Consider whether ray-march step size in Pass 2 needs to adapt to a node's depth (coarser nodes = larger effective voxel size = larger safe step), mirroring how the main traversal already needs to handle LOD boundaries.
