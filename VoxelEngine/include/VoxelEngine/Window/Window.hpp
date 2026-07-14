@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string_view>
+
 #include "VoxelEngine/Maths/vec.hpp"
 
 // Forward delcaration

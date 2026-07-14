@@ -13,9 +13,10 @@ namespace VoxelEngine {
             Window m_window{};
 
         public:
-            Engine(std::unique_ptr<Game> game) : m_game(std::move(game)) {}
+            Engine(const char* name) { this->Init(name); }
 
         public:
+            void setGame(std::unique_ptr<Game>&& game) { m_game = std::move(game); }
             void run();
 
             void RequestClose() override;
@@ -23,6 +24,6 @@ namespace VoxelEngine {
             void setVSync(bool on) override;
 
         private:
-            void Init();
+            void Init(const char* name);
     };
 }

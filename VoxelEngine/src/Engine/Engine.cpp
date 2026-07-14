@@ -3,25 +3,28 @@
 #include "VoxelEngine/utils/assert.hpp"
 
 namespace VoxelEngine {
-    void Engine::Init() {
-        V_ASSERT(m_game, "Game cannod be nullptr");
-
-        m_window.Init(m_game->getName());
+    void Engine::Init(const char* name) {
+        m_window.Init(name);
     }
 
     void Engine::run() {
-        this->Init();
-
         m_game->Init(*this);
 
         while (!m_window.shouldClose()) {
             glfwPollEvents();
 
+            m_game->Update();
+
+            glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
             glClear(GL_COLOR_BUFFER_BIT);
-            glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
+            glViewport(0.0, 0.0, m_window.size.x, m_window.size.y);
+
+            m_game->Render();
 
             m_window.swapBuffers();
         }
+
+        m_game->Shutdown();
     }
 
     void Engine::RequestClose() {

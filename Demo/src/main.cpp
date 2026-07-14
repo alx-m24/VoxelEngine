@@ -4,10 +4,17 @@
 #include "VoxelEngine/utils/version.hpp"
 #include "VoxelEngine/Game/Game.hpp"
 #include "VoxelEngine/Engine/Engine.hpp"
+#include "VoxelEngine/Bindable/SmartBinder.hpp"
+#include "VoxelEngine/Drawable/Primitives/Quad.hpp"
+#include "VoxelEngine/Shaders/Shader.hpp"
 
 VoxelEngine::Version version(0u, 1u, 0u);
 
 class Demo : public VoxelEngine::Game {
+    private:
+        VoxelEngine::Shader m_rainbowShader = VoxelEngine::Shader("Demo/Shaders/RainbowRect.vert", "Demo/Shaders/RainbowRect.frag");
+        VoxelEngine::Quad m_demoQuad {};
+
     public:
         Demo() : VoxelEngine::Game("Demo", version) {};
 
@@ -17,13 +24,18 @@ class Demo : public VoxelEngine::Game {
         }
 
         void Update() override {}
-        void Render() override {}
+
+        void Render() override {
+            VoxelEngine::SmartBinder shaderBinder(m_rainbowShader);
+            m_demoQuad.Draw();
+        }
+
         void Shutdown() override {}
 };
 
 int main() {
-    std::unique_ptr<Demo> demo = std::make_unique<Demo>();
-    VoxelEngine::Engine engine(std::move(demo));
+    VoxelEngine::Engine engine("VoxelEngine - Demo");
+    engine.setGame(std::make_unique<Demo>());
 
     engine.run();
 

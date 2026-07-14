@@ -12,9 +12,4 @@ namespace VoxelEngine {
 
     using uvec2 = glm::uvec2;
     using uvec3 = glm::uvec3;
-
-    using mat3  = glm::mat3;
-    using mat4  = glm::mat4;
-
-    using quat  = glm::quat;
 }
