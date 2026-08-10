@@ -25,6 +25,8 @@ target_include_directories(${PROJECT_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
+voxelengine_deploy_shaders(${PROJECT_NAME})
+
 # --- Windows runtime (MinGW only) ---
 if(WIN32 AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     foreach(dll libstdc++-6.dll libgcc_s_seh-1.dll libwinpthread-1.dll)

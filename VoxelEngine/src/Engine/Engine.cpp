@@ -1,7 +1,5 @@
 #include "VoxelEngine/Engine/Engine.hpp"
 
-#include "VoxelEngine/utils/assert.hpp"
-
 namespace VoxelEngine {
     void Engine::Init(const char* name) {
         m_window.Init(name);

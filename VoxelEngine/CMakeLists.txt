@@ -25,3 +25,20 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_compile_options(assimp PRIVATE -Wno-unknown-pragmas -Wno-implicit-fallthrough)
     target_compile_options(${PROJECT_NAME} PRIVATE -static-libgcc)
 endif()
+
+set(VOXELENGINE_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders
+    CACHE INTERNAL "Path to VoxelEngine's built-in shaders")
+
+# Call this after add_executable(<target> ...) for any exe that should ship
+# with the engine's built-in shaders at ./shaders next to the binary.
+function(voxelengine_deploy_shaders target)
+    add_custom_command(TARGET ${target} POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "$<TARGET_FILE_DIR:${target}>/shaders"
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${VOXELENGINE_SHADER_DIR}"
+            "$<TARGET_FILE_DIR:${target}>/shaders"
+        COMMENT "Copying VoxelEngine built-in shaders to output directory"
+        VERBATIM
+    )
+endfunction()

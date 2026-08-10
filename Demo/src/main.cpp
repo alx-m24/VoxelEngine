@@ -16,7 +16,7 @@ class Demo : public VoxelEngine::Game {
         VoxelEngine::Quad m_demoQuad {};
 
     public:
-        Demo() : VoxelEngine::Game("Demo", version) {};
+        Demo() : VoxelEngine::Game(version) {};
 
         void Init(VoxelEngine::EngineService& service) override {
             service.setVSync(true);
