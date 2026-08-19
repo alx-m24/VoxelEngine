@@ -16,16 +16,19 @@ class Demo : public VoxelEngine::Game {
         VoxelEngine::Quad m_demoQuad {};
 
     public:
-        Demo() : VoxelEngine::Game(version) {};
+        Demo() : VoxelEngine::Game("Demo", version) {};
 
-        void Init(VoxelEngine::EngineService& service) override {
-            service.setVSync(true);
+        void Init(VoxelEngine::EngineService& engine) override {
+            engine.setVSync(true);
+            // update.setActiveCamera(&someCamera);
             std::cout << version.toString() << std::endl;
         }
 
-        void Update() override {}
+        void Update(VoxelEngine::UpdateService& update) override {
+            // float dt = update.getDeltaTime();
+        }
 
-        void Render() override {
+        void Render(VoxelEngine::RenderService& render) override {
             VoxelEngine::SmartBinder shaderBinder(m_rainbowShader);
             m_demoQuad.Draw();
         }

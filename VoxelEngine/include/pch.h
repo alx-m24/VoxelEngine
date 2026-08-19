@@ -10,6 +10,10 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <functional>
+#include <utility>
+#include <vector>
+#include <filesystem>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>

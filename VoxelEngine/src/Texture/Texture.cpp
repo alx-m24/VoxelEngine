@@ -81,4 +81,10 @@ namespace VoxelEngine {
             glGenerateMipmap(GL_TEXTURE_2D);
         }
     }
+        
+    void Texture::resize(uint32_t width, uint32_t height) {
+        m_width = width;
+        m_height = height;
+        Allocate(nullptr);
+    }
 }

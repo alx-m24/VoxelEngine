@@ -15,12 +15,14 @@ namespace VoxelEngine {
     void Window::FrameBufferSizeCallback(GLFWwindow* glfw_window, int width, int height) {
         Window* window = reinterpret_cast<Window*>(glfwGetWindowUserPointer(glfw_window));
         window->size = { width, height };
+        for (const auto& callback : window->m_resizeCallbacks) callback(static_cast<uint32_t>(width), static_cast<uint32_t>(height));
         glViewport(0, 0, width, height);
     }
 
     Window::~Window() {
         if (m_window) Shutdown();
     }
+
 
     void Window::setCursorMode(CURSOR_MODE mode) const {
         glfwSetInputMode(m_window,

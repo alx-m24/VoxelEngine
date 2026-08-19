@@ -29,10 +29,11 @@ endif()
 set(VOXELENGINE_SHADER_DIR ${CMAKE_CURRENT_SOURCE_DIR}/shaders
     CACHE INTERNAL "Path to VoxelEngine's built-in shaders")
 
-# Call this after add_executable(<target> ...) for any exe that should ship
-# with the engine's built-in shaders at ./shaders next to the binary.
 function(voxelengine_deploy_shaders target)
-    add_custom_command(TARGET ${target} POST_BUILD
+    if(NOT EXISTS "${VOXELENGINE_SHADER_DIR}")
+        message(FATAL_ERROR "VOXELENGINE_SHADER_DIR does not exist: ${VOXELENGINE_SHADER_DIR}")
+    endif()
+    add_custom_target(${target}_deploy_shaders ALL
         COMMAND ${CMAKE_COMMAND} -E make_directory
             "$<TARGET_FILE_DIR:${target}>/shaders"
         COMMAND ${CMAKE_COMMAND} -E copy_directory
@@ -41,4 +42,5 @@ function(voxelengine_deploy_shaders target)
         COMMENT "Copying VoxelEngine built-in shaders to output directory"
         VERBATIM
     )
+    add_dependencies(${target}_deploy_shaders ${target})
 endfunction()

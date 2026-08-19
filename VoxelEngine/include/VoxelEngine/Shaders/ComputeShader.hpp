@@ -7,6 +7,6 @@ namespace VoxelEngine {
 
     class ComputeShader : public Shader {
         public:
-            ComputeShader(const std::string& path, bool isFromFile);
+            ComputeShader(const std::string& path, bool isFromFile = true);
     };
 }

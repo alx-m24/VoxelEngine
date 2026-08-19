@@ -7,10 +7,12 @@
 #include "VoxelEngine/Game/Game.hpp"
 
 namespace VoxelEngine {
-    class Engine : public EngineService {
+    class Engine : public EngineService, public UpdateService, public RenderService {
         private:
             std::unique_ptr<Game> m_game{};
             Window m_window{};
+            double m_lastFrameTime{};
+
 
         public:
             Engine(const char* name) { this->Init(name); }
@@ -21,9 +23,12 @@ namespace VoxelEngine {
 
             void RequestClose() override;
             void setCursorMode(EngineService::CURSOR_MODE mode) override;
+            void setActiveCamera(const Camera* cam) override;
             void setVSync(bool on) override;
 
         private:
             void Init(const char* name);
+            void updateFrameTiming();
+            void syncViewportSize();
     };
 }

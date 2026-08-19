@@ -26,6 +26,7 @@ namespace VoxelEngine {
             catch (std::ifstream::failure& e)
             {
                 V_LOG_ERROR("ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " + std::string(e.what()));
+                return;
             }
         }
         const char* ShaderCode = shaderCode.c_str();

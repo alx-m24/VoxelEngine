@@ -44,7 +44,8 @@ namespace VoxelEngine {
             }
             catch (std::ifstream::failure& e)
             {
-                V_LOG_ERROR("ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " + std::string(e.what()));
+                V_LOG_ERROR("ERROR::SHADER::FILE_NOT_SUCCESSFULLY_READ: " + vertexSrc + " / " + fragmentSrc + " (" + e.what() + ")");
+                return;
             }
         }
         const char* vShaderCode = vertexCode.c_str();
@@ -55,12 +56,12 @@ namespace VoxelEngine {
         vertex = glCreateShader(GL_VERTEX_SHADER);
         glShaderSource(vertex, 1, &vShaderCode, NULL);
         glCompileShader(vertex);
-        checkCompileErrors(vertex, "VERTEX");
+        checkCompileErrors(vertex, "VERTEX" + vertexSrc);
         // fragment Shader
         fragment = glCreateShader(GL_FRAGMENT_SHADER);
         glShaderSource(fragment, 1, &fShaderCode, NULL);
         glCompileShader(fragment);
-        checkCompileErrors(fragment, "FRAGMENT");
+        checkCompileErrors(fragment, "FRAGMENT" + fragmentSrc);
         // if geometry shader is given, compile geometry shader
         unsigned int geometry = 0;
         if (geometrySrc != "")
@@ -99,7 +100,7 @@ namespace VoxelEngine {
                 glGetShaderInfoLog(shader, 1024, nullptr, infoLog);
                 V_LOG_ERROR(
                     "SHADER_COMPILATION_ERROR of type: " + type + "\n" +
-                    std::string(infoLog) + "\n -- --------------------------------------------------- -- "
+                    std::string(infoLog) + "\n --------------------------------------------------------- "
                 );
             }
         }
@@ -111,7 +112,7 @@ namespace VoxelEngine {
                 glGetProgramInfoLog(shader, 1024, nullptr, infoLog);
                 V_LOG_ERROR(
                     "PROGRAM_LINKING_ERROR of type: " + type + "\n" +
-                    std::string(infoLog) + "\n -- --------------------------------------------------- -- "
+                    std::string(infoLog) + "\n --------------------------------------------------------- "
                 );
             }
         }

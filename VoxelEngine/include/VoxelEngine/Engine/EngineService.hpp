@@ -12,7 +12,6 @@ namespace VoxelEngine {
                 FREE
             };
             virtual void setCursorMode(EngineService::CURSOR_MODE mode) = 0;
-
             virtual void setVSync(bool on) = 0;
     };
 }

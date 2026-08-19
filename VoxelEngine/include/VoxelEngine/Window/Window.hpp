@@ -1,7 +1,8 @@
 #pragma once
 
-#include <cstdint>
 #include <string_view>
+#include <functional>
+#include <vector>
 
 #include "VoxelEngine/Maths/vec.hpp"
 
@@ -13,6 +14,12 @@ namespace VoxelEngine {
         private:
             GLFWwindow* m_window = nullptr;
             uvec2 size;
+            
+        public:
+            using ResizeCallback_T = std::function<void(uint32_t, uint32_t)>;
+
+        private:
+            std::vector<ResizeCallback_T> m_resizeCallbacks;
 
         public:
             Window() = default;
@@ -30,7 +37,13 @@ namespace VoxelEngine {
             void setCursorMode(CURSOR_MODE mode) const;
             void swapBuffers() const;
             bool shouldClose() const;
-            
+
+        public:
+            template<typename T>
+            void addResizeCallback(T&& callback) {
+                m_resizeCallbacks.emplace_back(std::forward<T&&>(callback));
+            }
+
         private:
             static void FrameBufferSizeCallback(GLFWwindow* window, int width, int height);
     };

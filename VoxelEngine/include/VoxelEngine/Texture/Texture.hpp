@@ -37,6 +37,8 @@ namespace VoxelEngine {
             uint32_t      GetHeight() const { return m_height; }
             TextureFormat GetFormat() const { return m_format; }
 
+            void resize(uint32_t width, uint32_t height);
+
         private:
             void Allocate(const void* pixels);
 
