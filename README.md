@@ -1,5 +1,7 @@
 # VoxelEngine
 
+[Demo](https://alex-m24.itch.io/voxelengine)
+
 A voxel engine written in C++. Design notes for the GPU SVO system and the per-voxel deferred shadow pipeline built on top of it.
 
 # Table of Contents
