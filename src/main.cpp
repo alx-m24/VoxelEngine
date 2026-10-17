@@ -100,9 +100,9 @@ private:
     std::vector<vk::Image>       swapImages;
     std::vector<vk::ImageView>   swapViews;
     std::vector<vk::Semaphore>   renderDone;          // one per swapchain image
-    vk::Image                    depthImage;
-    VmaAllocation                depthAlloc = nullptr;
-    vk::ImageView                depthView;
+    std::vector<vk::Image>       depthImages;
+    std::vector<vk::ImageView>   depthViews;
+    std::vector<VmaAllocation>   depthAllocs;
 
     // --- scene ---
     vk::PipelineLayout pipelineLayout;
@@ -123,7 +123,7 @@ private:
         if (!glfwInit()) throw std::runtime_error("glfwInit failed");
         if (!glfwVulkanSupported()) throw std::runtime_error("GLFW: Vulkan loader not found");
         glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-        window = glfwCreateWindow(1024, 640, "Vulkan Cube", nullptr, nullptr);
+        window = glfwCreateWindow(1024, 640, "VoxelEngine - Vulkan", nullptr, nullptr);
         if (!window) throw std::runtime_error("glfwCreateWindow failed");
         glfwSetWindowUserPointer(window, this);
         glfwSetFramebufferSizeCallback(window, [](GLFWwindow* w, int, int) {
@@ -340,23 +340,34 @@ private:
         allocInfo.flags    = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
         allocInfo.priority = 1.0f;
 
-        VkImage raw = VK_NULL_HANDLE;
-        vmaCheck(vmaCreateImage(allocator, native(imageInfo), &allocInfo, &raw, &depthAlloc, nullptr), "depth image");
-        depthImage = raw;
-        depthView  = device.createImageView({
-            .image            = depthImage,
-            .viewType         = vk::ImageViewType::e2D,
-            .format           = kDepthFormat,
-            .subresourceRange = { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } });
+        for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+            vk::Image& depthImage = depthImages.emplace_back();
+            vk::ImageView& depthView = depthViews.emplace_back();
+            VmaAllocation& depthAlloc = depthAllocs.emplace_back();
+
+            VkImage raw = VK_NULL_HANDLE;
+            vmaCheck(vmaCreateImage(allocator, native(imageInfo), &allocInfo, &raw, &depthAlloc, nullptr), "depth image");
+            depthImage = raw;
+            depthView  = device.createImageView({
+                .image            = depthImage,
+                .viewType         = vk::ImageViewType::e2D,
+                .format           = kDepthFormat,
+                .subresourceRange = { vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1 } });
+        }
     }
 
     void destroySwapchainResources() {
         for (auto s : renderDone) device.destroySemaphore(s);
         for (auto v : swapViews) device.destroyImageView(v);
+        for (auto d : depthViews) device.destroyImageView(d);
+        for (uint32_t i = 0; i < kFramesInFlight; ++i) {
+            vmaDestroyImage(allocator, static_cast<VkImage>(depthImages[i]), depthAllocs[i]);
+        }
         renderDone.clear();
         swapViews.clear();
-        device.destroyImageView(depthView);
-        vmaDestroyImage(allocator, static_cast<VkImage>(depthImage), depthAlloc);
+        depthImages.clear();
+        depthViews.clear();
+        depthAllocs.clear();
     }
 
     void recreateSwapchain() {
@@ -532,7 +543,7 @@ private:
                    Stage::eColorAttachmentOutput, Access::eNone,
                    Stage::eColorAttachmentOutput, Access::eColorAttachmentWrite);
         // depth: the previous frame's depth writes must finish before we clear it again
-        transition(cmd, depthImage, vk::ImageAspectFlagBits::eDepth,
+        transition(cmd, depthImages[frame], vk::ImageAspectFlagBits::eDepth,
                    vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthAttachmentOptimal,
                    Stage::eEarlyFragmentTests | Stage::eLateFragmentTests, Access::eDepthStencilAttachmentWrite,
                    Stage::eEarlyFragmentTests | Stage::eLateFragmentTests,
@@ -545,7 +556,7 @@ private:
             .storeOp     = vk::AttachmentStoreOp::eStore,
             .clearValue  = vk::ClearValue{ vk::ClearColorValue{ std::array<float, 4>{ 0.05f, 0.06f, 0.09f, 1.0f } } } };
         const vk::RenderingAttachmentInfo depth{
-            .imageView   = depthView,
+            .imageView   = depthViews[frame],
             .imageLayout = vk::ImageLayout::eDepthAttachmentOptimal,
             .loadOp      = vk::AttachmentLoadOp::eClear,
             .storeOp     = vk::AttachmentStoreOp::eDontCare,
