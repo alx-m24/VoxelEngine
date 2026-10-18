@@ -21,16 +21,14 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <string>
 #include <vector>
 
-namespace {
+#include "VoxelEngine/api/vma.hpp"
+#include "VoxelEngine/mesh/primitive/cube.hpp"
+#include "VoxelEngine/mesh/primitive/quad.hpp"
+
+namespace VoxelEngine {
 
 constexpr uint32_t   kFramesInFlight = 2;
 constexpr vk::Format kDepthFormat    = vk::Format::eD32Sfloat;
-
-struct Vertex {
-    glm::vec3 pos;
-    glm::vec3 normal;
-    glm::vec3 color;
-};
 
 struct PushConstants {      // 128 bytes = the guaranteed minimum push-constant size
     glm::mat4 mvp;
@@ -43,16 +41,6 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
     if (severity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
         std::fprintf(stderr, "[vulkan] %s\n", data->pMessage);
     return VK_FALSE;
-}
-
-// vulkan.hpp struct -> pointer to the equivalent C struct (for VMA's C API).
-template <class T>
-const typename T::NativeType* native(const T& v) {
-    return &static_cast<const typename T::NativeType&>(v);
-}
-
-void vmaCheck(VkResult r, const char* what) {
-    if (r != VK_SUCCESS) throw std::runtime_error(std::string("VMA call failed: ") + what);
 }
 
 std::vector<uint32_t> readSpirv(const std::string& path) {
@@ -107,9 +95,9 @@ private:
     // --- scene ---
     vk::PipelineLayout pipelineLayout;
     vk::Pipeline       pipeline;
-    vk::Buffer         vertexBuffer, indexBuffer;
-    VmaAllocation      vertexAlloc = nullptr, indexAlloc = nullptr;
-    uint32_t           indexCount  = 0;
+
+    Primitives::Cube cubeMesh{};
+    Primitives::Quad quadMesh{};
 
     // --- per-frame ---
     vk::CommandPool                              cmdPool;
@@ -141,7 +129,8 @@ private:
         createSwapchain();
         createDepth();
         createPipeline();
-        createCube();
+        cubeMesh.Upload({ .device = device, .commandPool = cmdPool, .transferQueue = queue, .allocator = allocator });
+        quadMesh.Upload({ .device = device, .commandPool = cmdPool, .transferQueue = queue, .allocator = allocator });
     }
 
     void createInstance() {
@@ -159,12 +148,23 @@ private:
         if (validation) {
             layers.push_back("VK_LAYER_KHRONOS_validation");
             extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+            extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
         } else {
             std::fprintf(stderr, "Validation layer not found; continuing without it.\n");
         }
 #endif
-        vk::ApplicationInfo appInfo{ .pApplicationName = "Vulkan Cube", .apiVersion = VK_API_VERSION_1_3 };
+        const vk::ValidationFeatureEnableEXT enables[] = { 
+            vk::ValidationFeatureEnableEXT::eSynchronizationValidation
+        };
+
+        vk::ValidationFeaturesEXT validationFeatures{ 
+            .enabledValidationFeatureCount = 1, 
+            .pEnabledValidationFeatures = enables
+        };
+
+        vk::ApplicationInfo appInfo{ .pApplicationName = "VoxelEngine", .apiVersion = VK_API_VERSION_1_3 };
         instance = vk::createInstance({
+            .pNext = validation ? &validationFeatures : nullptr,
             .pApplicationInfo        = &appInfo,
             .enabledLayerCount       = static_cast<uint32_t>(layers.size()),
             .ppEnabledLayerNames     = layers.data(),
@@ -453,69 +453,6 @@ private:
         device.destroyShaderModule(frag);
     }
 
-    // -------------------------------------------------------------- geometry
-    // Device-local buffer filled through a staging buffer; blocks until the copy is done.
-    void createDeviceBuffer(const void* data, vk::DeviceSize size, vk::BufferUsageFlags usage,
-                            vk::Buffer& outBuffer, VmaAllocation& outAlloc) {
-        // 1. host-visible staging buffer
-        const vk::BufferCreateInfo stagingInfo{ .size = size, .usage = vk::BufferUsageFlagBits::eTransferSrc };
-        VmaAllocationCreateInfo stagingAlloc{};
-        stagingAlloc.usage = VMA_MEMORY_USAGE_AUTO;
-        stagingAlloc.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
-        VkBuffer      staging      = VK_NULL_HANDLE;
-        VmaAllocation stagingMemory = nullptr;
-        vmaCheck(vmaCreateBuffer(allocator, native(stagingInfo), &stagingAlloc, &staging, &stagingMemory, nullptr), "staging");
-        vmaCheck(vmaCopyMemoryToAllocation(allocator, data, stagingMemory, 0, size), "staging copy");
-
-        // 2. device-local destination
-        const vk::BufferCreateInfo bufferInfo{ .size = size, .usage = usage | vk::BufferUsageFlagBits::eTransferDst };
-        VmaAllocationCreateInfo bufferAlloc{};
-        bufferAlloc.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
-        VkBuffer raw = VK_NULL_HANDLE;
-        vmaCheck(vmaCreateBuffer(allocator, native(bufferInfo), &bufferAlloc, &raw, &outAlloc, nullptr), "device buffer");
-        outBuffer = raw;
-
-        // 3. one-shot copy
-        vk::CommandBuffer cmd = device.allocateCommandBuffers({ .commandPool = cmdPool,
-                                                                .level = vk::CommandBufferLevel::ePrimary,
-                                                                .commandBufferCount = 1 })[0];
-        cmd.begin({ .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit });
-        cmd.copyBuffer(staging, outBuffer, vk::BufferCopy{ .srcOffset = 0, .dstOffset = 0, .size = size });
-        cmd.end();
-        queue.submit(vk::SubmitInfo{ .commandBufferCount = 1, .pCommandBuffers = &cmd });
-        queue.waitIdle();
-
-        device.freeCommandBuffers(cmdPool, cmd);
-        vmaDestroyBuffer(allocator, staging, stagingMemory);
-    }
-
-    void createCube() {
-        struct Face { glm::vec3 n, u, v, color; };        // u x v == n, so (u right, v up) seen from outside
-        const Face faces[] = {
-            { { 1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0.90f, 0.30f, 0.30f} },
-            { {-1, 0, 0}, {0, 0, 1}, {0, 1, 0}, {0.30f, 0.80f, 0.80f} },
-            { { 0, 1, 0}, {0, 0, 1}, {1, 0, 0}, {0.40f, 0.85f, 0.40f} },
-            { { 0,-1, 0}, {1, 0, 0}, {0, 0, 1}, {0.85f, 0.40f, 0.85f} },
-            { { 0, 0, 1}, {1, 0, 0}, {0, 1, 0}, {0.35f, 0.45f, 0.95f} },
-            { { 0, 0,-1}, {0, 1, 0}, {1, 0, 0}, {0.95f, 0.85f, 0.35f} } };
-        const glm::vec2 corners[] = { {-1, -1}, {1, -1}, {1, 1}, {-1, 1} };   // counter-clockwise
-
-        std::vector<Vertex>   vertices;
-        std::vector<uint16_t> indices;
-        for (const Face& f : faces) {
-            const auto base = static_cast<uint16_t>(vertices.size());
-            for (const glm::vec2& c : corners)
-                vertices.push_back({ 0.5f * (f.n + c.x * f.u + c.y * f.v), f.n, f.color });
-            for (uint16_t i : { 0, 1, 2, 0, 2, 3 }) indices.push_back(static_cast<uint16_t>(base + i));
-        }
-        indexCount = static_cast<uint32_t>(indices.size());
-
-        createDeviceBuffer(vertices.data(), vertices.size() * sizeof(Vertex),
-                           vk::BufferUsageFlagBits::eVertexBuffer, vertexBuffer, vertexAlloc);
-        createDeviceBuffer(indices.data(), indices.size() * sizeof(uint16_t),
-                           vk::BufferUsageFlagBits::eIndexBuffer, indexBuffer, indexAlloc);
-    }
-
     // ------------------------------------------------------------------ draw
     static void transition(vk::CommandBuffer cmd, vk::Image image, vk::ImageAspectFlags aspect,
                            vk::ImageLayout from, vk::ImageLayout to,
@@ -542,10 +479,11 @@ private:
                    vk::ImageLayout::eUndefined, vk::ImageLayout::eColorAttachmentOptimal,
                    Stage::eColorAttachmentOutput, Access::eNone,
                    Stage::eColorAttachmentOutput, Access::eColorAttachmentWrite);
-        // depth: the previous frame's depth writes must finish before we clear it again
+        // depth: Per-frame depth image: previous use has completed because we waited
+        //          for this frame slot's fence. Discard old contents and transition layout.
         transition(cmd, depthImages[frame], vk::ImageAspectFlagBits::eDepth,
                    vk::ImageLayout::eUndefined, vk::ImageLayout::eDepthAttachmentOptimal,
-                   Stage::eEarlyFragmentTests | Stage::eLateFragmentTests, Access::eDepthStencilAttachmentWrite,
+                   Stage::eNone, Access::eNone,
                    Stage::eEarlyFragmentTests | Stage::eLateFragmentTests,
                    Access::eDepthStencilAttachmentRead | Access::eDepthStencilAttachmentWrite);
 
@@ -585,10 +523,21 @@ private:
         const PushConstants push{ proj * view * model, model };
         cmd.pushConstants<PushConstants>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, push);
 
-        const vk::DeviceSize offset = 0;
-        cmd.bindVertexBuffers(0, vertexBuffer, offset);
-        cmd.bindIndexBuffer(indexBuffer, 0, vk::IndexType::eUint16);
-        cmd.drawIndexed(indexCount, 1, 0, 0, 0);
+        Context::DrawContext drawCtx = { cmd };
+        cubeMesh.Draw(drawCtx);
+
+        glm::mat4 ortho_projection = glm::ortho(
+            0.0f,
+            static_cast<float>(extent.width),
+            static_cast<float>(extent.height),
+            0.0f,
+            0.0f,
+            1.0f
+        );
+        
+        const PushConstants pushQuad{ proj * view, glm::mat4(1.0f) };
+        cmd.pushConstants<PushConstants>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushQuad);
+        quadMesh.Draw(drawCtx);
 
         cmd.endRendering();
 
@@ -646,8 +595,8 @@ private:
         destroySwapchainResources();
         device.destroySwapchainKHR(swapchain);
 
-        vmaDestroyBuffer(allocator, static_cast<VkBuffer>(vertexBuffer), vertexAlloc);
-        vmaDestroyBuffer(allocator, static_cast<VkBuffer>(indexBuffer), indexAlloc);
+        cubeMesh.Delete();
+        quadMesh.Delete();
         device.destroyPipeline(pipeline);
         device.destroyPipelineLayout(pipelineLayout);
 
@@ -672,7 +621,7 @@ private:
 
 int main() {
     try {
-        App app;
+        VoxelEngine::App app;
         app.run();
     } catch (const std::exception& e) {
         std::fprintf(stderr, "Fatal: %s\n", e.what());

@@ -54,7 +54,7 @@ FetchContent_MakeAvailable(vulkan_headers vma glfw glm)
 add_executable(${PROJECT_NAME} src/main.cpp src/vma.cpp)
 
 target_link_libraries(${PROJECT_NAME} PRIVATE Vulkan::Headers glfw glm::glm)
-target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${vma_SOURCE_DIR}/include)
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${vma_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/include)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE
     VK_NO_PROTOTYPES                       # functions come from the dynamic dispatcher
