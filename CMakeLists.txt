@@ -91,17 +91,19 @@ if(NOT GLSLC_EXECUTABLE AND NOT GLSLANG_EXECUTABLE)
         "or 'apt install glslc' / 'brew install shaderc', and re-run CMake.")
 endif()
 
-file(GLOB SHADER_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_SOURCE_DIR}/shaders/*.vert ${CMAKE_SOURCE_DIR}/shaders/*.frag
-    ${CMAKE_SOURCE_DIR}/shaders/*.comp ${CMAKE_SOURCE_DIR}/shaders/*.geom
-    ${CMAKE_SOURCE_DIR}/shaders/*.tesc ${CMAKE_SOURCE_DIR}/shaders/*.tese)
+set(SHADER_ROOT ${CMAKE_SOURCE_DIR}/shaders)
+file(GLOB_RECURSE SHADER_SOURCES CONFIGURE_DEPENDS
+    ${SHADER_ROOT}/*.vert ${SHADER_ROOT}/*.frag ${SHADER_ROOT}/*.comp
+    ${SHADER_ROOT}/*.geom ${SHADER_ROOT}/*.tesc ${SHADER_ROOT}/*.tese)
 
 set(SHADER_OUT_DIR ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders)
 set(SPIRV_FILES "")
 
 foreach(src IN LISTS SHADER_SOURCES)
-    get_filename_component(fname ${src} NAME)
-    set(spv ${SHADER_OUT_DIR}/${fname}.spv)
+    # path relative to shaders/, e.g. "voxels/stage1.vert", so subfolders are preserved
+    file(RELATIVE_PATH rel ${SHADER_ROOT} ${src})
+    set(spv ${SHADER_OUT_DIR}/${rel}.spv)
+    get_filename_component(spv_dir ${spv} DIRECTORY)
 
     if(GLSLC_EXECUTABLE)
         set(compile_cmd ${GLSLC_EXECUTABLE} --target-env=vulkan1.3
@@ -117,11 +119,11 @@ foreach(src IN LISTS SHADER_SOURCES)
 
     add_custom_command(
         OUTPUT  ${spv}
-        COMMAND ${CMAKE_COMMAND} -E make_directory ${SHADER_OUT_DIR}
+        COMMAND ${CMAKE_COMMAND} -E make_directory ${spv_dir}   # the parent folder, not the .spv itself
         COMMAND ${compile_cmd}
         DEPENDS ${src}
         ${depfile_arg}
-        COMMENT "Compiling shader ${fname}"
+        COMMENT "Compiling shader ${rel}"
         VERBATIM)
     list(APPEND SPIRV_FILES ${spv})
 endforeach()

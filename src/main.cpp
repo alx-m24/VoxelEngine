@@ -10,6 +10,7 @@ VULKAN_HPP_DEFAULT_DISPATCH_LOADER_DYNAMIC_STORAGE
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <filesystem>
 #include <algorithm>
 #include <array>
 #include <cstdint>
@@ -44,12 +45,17 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(VkDebugUtilsMessageSeverityFlagBits
 }
 
 std::vector<uint32_t> readSpirv(const std::string& path) {
-    std::ifstream file(path, std::ios::binary | std::ios::ate);
-    if (!file) throw std::runtime_error("cannot open shader: " + path);
-    const size_t bytes = static_cast<size_t>(file.tellg());
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec))
+        throw std::runtime_error("shader is missing or not a regular file: " + path);
+    const auto bytes = std::filesystem::file_size(path, ec);
+    if (ec || bytes == 0 || bytes % sizeof(uint32_t) != 0)
+        throw std::runtime_error("bad SPIR-V size (" + std::to_string(bytes) + " bytes): " + path);
+
+    std::ifstream file(path, std::ios::binary);
     std::vector<uint32_t> code(bytes / sizeof(uint32_t));
-    file.seekg(0);
-    file.read(reinterpret_cast<char*>(code.data()), static_cast<std::streamsize>(code.size() * sizeof(uint32_t)));
+    file.read(reinterpret_cast<char*>(code.data()), static_cast<std::streamsize>(bytes));
+    if (!file) throw std::runtime_error("failed to read: " + path);
     return code;
 }
 
@@ -88,13 +94,16 @@ private:
     std::vector<vk::Image>       swapImages;
     std::vector<vk::ImageView>   swapViews;
     std::vector<vk::Semaphore>   renderDone;          // one per swapchain image
-    std::vector<vk::Image>       depthImages;
-    std::vector<vk::ImageView>   depthViews;
-    std::vector<VmaAllocation>   depthAllocs;
+    std::array<vk::Image, kFramesInFlight>       depthImages;
+    std::array<vk::ImageView, kFramesInFlight>   depthViews;
+    std::array<VmaAllocation, kFramesInFlight>   depthAllocs;
 
     // --- scene ---
-    vk::PipelineLayout pipelineLayout;
-    vk::Pipeline       pipeline;
+    vk::PipelineLayout meshPipelineLayout;
+    vk::Pipeline       meshPipeline;
+
+    vk::PipelineLayout quadLayout;
+    vk::Pipeline       quadPipeline;
 
     Primitives::Cube cubeMesh{};
     Primitives::Quad quadMesh{};
@@ -129,6 +138,7 @@ private:
         createSwapchain();
         createDepth();
         createPipeline();
+        createQuadPipeline();
         cubeMesh.Upload({ .device = device, .commandPool = cmdPool, .transferQueue = queue, .allocator = allocator });
         quadMesh.Upload({ .device = device, .commandPool = cmdPool, .transferQueue = queue, .allocator = allocator });
     }
@@ -341,9 +351,9 @@ private:
         allocInfo.priority = 1.0f;
 
         for (uint32_t i = 0; i < kFramesInFlight; ++i) {
-            vk::Image& depthImage = depthImages.emplace_back();
-            vk::ImageView& depthView = depthViews.emplace_back();
-            VmaAllocation& depthAlloc = depthAllocs.emplace_back();
+            vk::Image& depthImage = depthImages[i];
+            vk::ImageView& depthView = depthViews[i];
+            VmaAllocation& depthAlloc = depthAllocs[i];
 
             VkImage raw = VK_NULL_HANDLE;
             vmaCheck(vmaCreateImage(allocator, native(imageInfo), &allocInfo, &raw, &depthAlloc, nullptr), "depth image");
@@ -359,15 +369,14 @@ private:
     void destroySwapchainResources() {
         for (auto s : renderDone) device.destroySemaphore(s);
         for (auto v : swapViews) device.destroyImageView(v);
-        for (auto d : depthViews) device.destroyImageView(d);
+        for (auto& d : depthViews) { device.destroyImageView(d); d = vk::ImageView{}; }
         for (uint32_t i = 0; i < kFramesInFlight; ++i) {
             vmaDestroyImage(allocator, static_cast<VkImage>(depthImages[i]), depthAllocs[i]);
+            depthImages[i] = vk::Image{};
+            depthAllocs[i] = VmaAllocation{};
         }
         renderDone.clear();
         swapViews.clear();
-        depthImages.clear();
-        depthViews.clear();
-        depthAllocs.clear();
     }
 
     void recreateSwapchain() {
@@ -387,6 +396,54 @@ private:
     vk::ShaderModule loadShader(const char* name) {
         const auto code = readSpirv(std::string(SHADER_DIR) + "/" + name + ".spv");
         return device.createShaderModule({ .codeSize = code.size() * sizeof(uint32_t), .pCode = code.data() });
+    }
+
+    void createQuadPipeline() {
+        vk::ShaderModule vert = loadShader("voxels/stage1.vert");
+        vk::ShaderModule frag = loadShader("voxels/stage1.frag");
+        const vk::PipelineShaderStageCreateInfo stages[] = {
+            { .stage = vk::ShaderStageFlagBits::eVertex,   .module = vert, .pName = "main" },
+            { .stage = vk::ShaderStageFlagBits::eFragment, .module = frag, .pName = "main" } };
+    
+        // same buffer layout as the cube (stride = sizeof(Vertex)), but only the position is read
+        const vk::VertexInputBindingDescription binding{ .binding = 0, .stride = sizeof(Vertex), .inputRate = vk::VertexInputRate::eVertex };
+        const vk::VertexInputAttributeDescription attribute{ .location = 0, .binding = 0, .format = vk::Format::eR32G32B32Sfloat, .offset = offsetof(Vertex, pos) };
+        const vk::PipelineVertexInputStateCreateInfo vertexInput{
+            .vertexBindingDescriptionCount = 1, .pVertexBindingDescriptions = &binding,
+            .vertexAttributeDescriptionCount = 1, .pVertexAttributeDescriptions = &attribute };
+    
+        const vk::PipelineInputAssemblyStateCreateInfo inputAssembly{ .topology = vk::PrimitiveTopology::eTriangleList };
+        const vk::PipelineViewportStateCreateInfo viewport{ .viewportCount = 1, .scissorCount = 1 };
+        const vk::PipelineRasterizationStateCreateInfo raster{
+            .polygonMode = vk::PolygonMode::eFill, .cullMode = vk::CullModeFlagBits::eBack,
+            .frontFace = vk::FrontFace::eCounterClockwise, .lineWidth = 1.0f };
+        const vk::PipelineMultisampleStateCreateInfo multisample{ .rasterizationSamples = vk::SampleCountFlagBits::e1 };
+        const vk::PipelineDepthStencilStateCreateInfo depth{ .depthTestEnable = VK_FALSE, .depthWriteEnable = VK_FALSE };
+        const vk::PipelineColorBlendAttachmentState blendAttachment{
+            .blendEnable = VK_FALSE,
+            .colorWriteMask = vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+                              vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA };
+        const vk::PipelineColorBlendStateCreateInfo blend{ .attachmentCount = 1, .pAttachments = &blendAttachment };
+        const vk::DynamicState dynamicStates[] = { vk::DynamicState::eViewport, vk::DynamicState::eScissor };
+        const vk::PipelineDynamicStateCreateInfo dynamic{ .dynamicStateCount = 2, .pDynamicStates = dynamicStates };
+    
+        // the fragment stage reads it, so the range says eFragment
+        const vk::PushConstantRange pushRange{ .stageFlags = vk::ShaderStageFlagBits::eFragment, .offset = 0, .size = sizeof(glm::vec2) };
+        quadLayout = device.createPipelineLayout({ .pushConstantRangeCount = 1, .pPushConstantRanges = &pushRange });
+    
+        // must match the render pass attachments, depth included, even though depth is unused here
+        const vk::PipelineRenderingCreateInfo rendering{
+            .colorAttachmentCount = 1, .pColorAttachmentFormats = &swapFormat, .depthAttachmentFormat = kDepthFormat };
+    
+        quadPipeline = device.createGraphicsPipeline(nullptr, {
+            .pNext = &rendering, .stageCount = 2, .pStages = stages,
+            .pVertexInputState = &vertexInput, .pInputAssemblyState = &inputAssembly,
+            .pViewportState = &viewport, .pRasterizationState = &raster, .pMultisampleState = &multisample,
+            .pDepthStencilState = &depth, .pColorBlendState = &blend, .pDynamicState = &dynamic,
+            .layout = quadLayout }).value;
+    
+        device.destroyShaderModule(vert);
+        device.destroyShaderModule(frag);
     }
 
     void createPipeline() {
@@ -428,7 +485,7 @@ private:
 
         const vk::PushConstantRange pushRange{ .stageFlags = vk::ShaderStageFlagBits::eVertex, .offset = 0,
                                                .size = sizeof(PushConstants) };
-        pipelineLayout = device.createPipelineLayout({ .pushConstantRangeCount = 1, .pPushConstantRanges = &pushRange });
+        meshPipelineLayout = device.createPipelineLayout({ .pushConstantRangeCount = 1, .pPushConstantRanges = &pushRange });
 
         // Dynamic rendering: attachment formats go here instead of in a VkRenderPass.
         const vk::PipelineRenderingCreateInfo rendering{
@@ -446,8 +503,8 @@ private:
             .pDepthStencilState  = &depth,
             .pColorBlendState    = &blend,
             .pDynamicState       = &dynamic,
-            .layout              = pipelineLayout });
-        pipeline = result.value;
+            .layout              = meshPipelineLayout });
+        meshPipeline = result.value;
 
         device.destroyShaderModule(vert);
         device.destroyShaderModule(frag);
@@ -506,39 +563,39 @@ private:
             .colorAttachmentCount = 1,
             .pColorAttachments    = &color,
             .pDepthAttachment     = &depth });
-
-        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline);
-        // Negative-height viewport flips Y so GLM's (y up) projection can be used unchanged.
+        
         cmd.setViewport(0, vk::Viewport{ 0.0f, static_cast<float>(extent.height),
-                                         static_cast<float>(extent.width), -static_cast<float>(extent.height), 0.0f, 1.0f });
+                                             static_cast<float>(extent.width), -static_cast<float>(extent.height), 0.0f, 1.0f });
         cmd.setScissor(0, vk::Rect2D{ { 0, 0 }, extent });
 
-        const float t = static_cast<float>(glfwGetTime());
-        const glm::mat4 model = glm::rotate(glm::rotate(glm::mat4(1.0f), t * 0.9f, glm::vec3(0, 1, 0)),
-                                            t * 0.5f, glm::vec3(1, 0, 0));
-        const glm::mat4 view  = glm::lookAt(glm::vec3(0.0f, 1.2f, 3.2f), glm::vec3(0.0f), glm::vec3(0, 1, 0));
-        const glm::mat4 proj  = glm::perspective(glm::radians(60.0f),
-                                                 static_cast<float>(extent.width) / static_cast<float>(extent.height),
-                                                 0.1f, 100.0f);
-        const PushConstants push{ proj * view * model, model };
-        cmd.pushConstants<PushConstants>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, push);
-
         Context::DrawContext drawCtx = { cmd };
-        cubeMesh.Draw(drawCtx);
 
-        glm::mat4 ortho_projection = glm::ortho(
-            0.0f,
-            static_cast<float>(extent.width),
-            static_cast<float>(extent.height),
-            0.0f,
-            0.0f,
-            1.0f
-        );
+        { // Quad
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, quadPipeline);
+            // (viewport + scissor as you already set them)
+            const glm::vec2 resolution{ float(extent.width), float(extent.height) };
+            cmd.pushConstants<glm::vec2>(quadLayout, vk::ShaderStageFlagBits::eFragment, 0, resolution);   // stage must match the range
+            quadMesh.Draw(drawCtx);
+            
+        }
+
+        { // Cube
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, meshPipeline);
+            // Negative-height viewport flips Y so GLM's (y up) projection can be used unchanged.
+            
+            const float t = static_cast<float>(glfwGetTime());
+            const glm::mat4 model = glm::rotate(glm::rotate(glm::mat4(1.0f), t * 0.9f, glm::vec3(0, 1, 0)),
+                                                t * 0.5f, glm::vec3(1, 0, 0));
+            const glm::mat4 view  = glm::lookAt(glm::vec3(0.0f, 1.2f, 3.2f), glm::vec3(0.0f), glm::vec3(0, 1, 0));
+            const glm::mat4 proj  = glm::perspective(glm::radians(60.0f),
+                                                     static_cast<float>(extent.width) / static_cast<float>(extent.height),
+                                                     0.1f, 100.0f);
+            const PushConstants push{ proj * view * model, model };
+            cmd.pushConstants<PushConstants>(meshPipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, push);
+
+            cubeMesh.Draw(drawCtx);
+        }
         
-        const PushConstants pushQuad{ proj * view, glm::mat4(1.0f) };
-        cmd.pushConstants<PushConstants>(pipelineLayout, vk::ShaderStageFlagBits::eVertex, 0, pushQuad);
-        quadMesh.Draw(drawCtx);
-
         cmd.endRendering();
 
         transition(cmd, swapImages[imageIndex], vk::ImageAspectFlagBits::eColor,
@@ -596,9 +653,12 @@ private:
         device.destroySwapchainKHR(swapchain);
 
         cubeMesh.Delete();
+        device.destroyPipeline(meshPipeline);
+        device.destroyPipelineLayout(meshPipelineLayout);
+
         quadMesh.Delete();
-        device.destroyPipeline(pipeline);
-        device.destroyPipelineLayout(pipelineLayout);
+        device.destroyPipeline(quadPipeline);
+        device.destroyPipelineLayout(quadLayout);
 
         for (uint32_t i = 0; i < kFramesInFlight; ++i) {
             device.destroyFence(inFlight[i]);
